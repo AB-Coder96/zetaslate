@@ -21,6 +21,7 @@ export default function Header() {
     First Name Last Name
   </Link>
 </h1>
+<OliveDivider />
 
 <h2 className="text-lg font-sans tracking-wide text-stone-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]">
   Personal Website
