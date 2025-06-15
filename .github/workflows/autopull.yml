@@ -6,18 +6,16 @@ on:
 
 jobs:
   deploy:
-    runs-on:            # must match the labels your runner advertises
-      - self-hosted
-      - windows
-      - x64
+    runs-on: [self-hosted, windows, x64]
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4        # puts the code in the runner’s _work folder
+    - name: Allow repo path for Git
+      shell: powershell
+      run: git config --global --add safe.directory 'C:/inetpub/wwwroot/zetaslate'
 
     - name: Fast-forward production copy
       shell: powershell
       run: |
-        cd 'C:\inetpub\wwwroot\zetaslate'      # folder where you serve/run the app
+        cd 'C:\inetpub\wwwroot\zetaslate'
         git fetch --all
-        git reset --hard origin/main   # or origin/$env:GITHUB_REF_NAME
+        git reset --hard origin/main
