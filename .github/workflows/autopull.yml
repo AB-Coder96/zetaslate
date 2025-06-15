@@ -1,0 +1,23 @@
+name: Auto-pull to server
+
+on:
+  push:                 # run on every push to the default branch
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on:            # must match the labels your runner advertises
+      - self-hosted
+      - windows
+      - x64
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4        # puts the code in the runner’s _work folder
+
+    - name: Fast-forward production copy
+      shell: powershell
+      run: |
+        cd 'C:\inetpub\wwwroot\zetaslate'      # folder where you serve/run the app
+        git fetch --all
+        git reset --hard origin/main   # or origin/$env:GITHUB_REF_NAME
