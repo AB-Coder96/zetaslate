@@ -1,40 +1,37 @@
-# .github/workflows/autopull.yml
 name: Auto-pull to IIS web-root
 
 on:
   push:
-    branches: [ main ]          # change if your production branch is different
-
-permissions:
-  contents: read                # the default, but set explicitly for clarity
+    branches: [ main ]      # adjust if you deploy a different branch
 
 jobs:
   deploy:
-    runs-on: [ self-hosted, windows, x64 ]   # must match your runner's labels
+    runs-on: [ self-hosted, windows, x64 ]
 
     steps:
-    # 1 ── Tell Git this folder is safe *and* inject the job-scoped token
-    - name: Configure Git for non-interactive fetch
+    # 1 ── mark the path safe (avoids "dubious ownership")
+    - name: Allow IIS folder for Git
+      shell: powershell
+      run: git config --global --add safe.directory 'C:/inetpub/wwwroot/zetaslate'
+
+    # 2 ── FIX: point 'origin' at a sane, tokenised URL *without* the extra slash
+    - name: Fix origin URL for token auth
       shell: powershell
       run: |
-        # ① mark the IIS folder as safe for any user (avoids "dubious ownership")
-        git config --global --add safe.directory 'C:/inetpub/wwwroot/zetaslate'
+        $token = '${{ secrets.GITHUB_TOKEN }}'
+        $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
+        git -C 'C:\inetpub\wwwroot\zetaslate' remote set-url origin $url
+        git -C 'C:\inetpub\wwwroot\zetaslate' remote -v           # show for debug
 
-        # ② rewrite every https://github.com/... URL on the fly so it already
-        #    contains the one-time job token – no credential prompt needed
-        git config --global `
-          url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf `
-          "https://github.com/"
-
-    # 2 ── Fast-forward the repo that IIS serves
+    # 3 ── pull the latest commit
     - name: Fast-forward production copy
       shell: powershell
       run: |
         cd 'C:\inetpub\wwwroot\zetaslate'
         git fetch --all --prune
-        git reset --hard origin/main          # or origin/<your-branch>
+        git reset --hard origin/main
 
-    # 3 ── (optional) recycle the IIS app pool so changes are picked up instantly
-    # - name: Recycle default app pool
+    # 4 ── (optional) recycle the IIS app-pool so the site reloads instantly
+    # - name: Recycle default app-pool
     #   shell: powershell
-    #   run: Restart-WebAppPool "DefaultAppPool"
+    #   run: Restart-WebAppPool 'DefaultAppPool'
