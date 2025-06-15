@@ -1,21 +1,40 @@
-name: Auto-pull to server
+# .github/workflows/autopull.yml
+name: Auto-pull to IIS web-root
 
 on:
-  push:                 # run on every push to the default branch
-    branches: [ main ]
+  push:
+    branches: [ main ]          # change if your production branch is different
+
+permissions:
+  contents: read                # the default, but set explicitly for clarity
 
 jobs:
   deploy:
-    runs-on: [self-hosted, windows, x64]
+    runs-on: [ self-hosted, windows, x64 ]   # must match your runner's labels
 
     steps:
-    - name: Allow repo path for Git
+    # 1 ── Tell Git this folder is safe *and* inject the job-scoped token
+    - name: Configure Git for non-interactive fetch
       shell: powershell
-      run: git config --global --add safe.directory 'C:/inetpub/wwwroot/zetaslate'
+      run: |
+        # ① mark the IIS folder as safe for any user (avoids "dubious ownership")
+        git config --global --add safe.directory 'C:/inetpub/wwwroot/zetaslate'
 
+        # ② rewrite every https://github.com/... URL on the fly so it already
+        #    contains the one-time job token – no credential prompt needed
+        git config --global `
+          url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf `
+          "https://github.com/"
+
+    # 2 ── Fast-forward the repo that IIS serves
     - name: Fast-forward production copy
       shell: powershell
       run: |
         cd 'C:\inetpub\wwwroot\zetaslate'
-        git fetch --all
-        git reset --hard origin/main
+        git fetch --all --prune
+        git reset --hard origin/main          # or origin/<your-branch>
+
+    # 3 ── (optional) recycle the IIS app pool so changes are picked up instantly
+    # - name: Recycle default app pool
+    #   shell: powershell
+    #   run: Restart-WebAppPool "DefaultAppPool"
