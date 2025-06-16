@@ -1,37 +1,46 @@
-name: Auto-pull to IIS web-root
+name: Deploy ZetaSlate (pull + recycle)
 
 on:
   push:
-    branches: [ main ]      # adjust if you deploy a different branch
+    branches: [ main ]                # deploy every push to main
+
+concurrency:                           # only one deploy per branch at a time
+  group: zetaslate-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # folder IIS serves
+  IIS_APPPOOL_NAME: 'ZetaSlatePool'              # name of the app-pool
+  WARMUP_URL: 'https://zetaslate.example.com/'   # your public URL
 
 jobs:
   deploy:
-    runs-on: [ self-hosted, windows, x64 ]
+    runs-on: [ self-hosted, windows, x64 ]       # labels of your runner
 
     steps:
-    # 1 ── mark the path safe (avoids "dubious ownership")
-    - name: Allow IIS folder for Git
-      shell: powershell
-      run: git config --global --add safe.directory 'C:/inetpub/wwwroot/zetaslate'
+      # 1 ── make the folder “safe” and patch origin with the job token
+      - name: Configure Git for non-interactive fetch
+        shell: powershell
+        run: |
+          git config --global --add safe.directory $Env:SITE_PATH
+          $token = '${{ secrets.GITHUB_TOKEN }}'
+          $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
+          git -C $Env:SITE_PATH remote set-url origin $url
 
-    # 2 ── FIX: point 'origin' at a sane, tokenised URL *without* the extra slash
-    - name: Fix origin URL for token auth
-      shell: powershell
-      run: |
-        $token = '${{ secrets.GITHUB_TOKEN }}'
-        $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
-        git -C 'C:\inetpub\wwwroot\zetaslate' remote set-url origin $url
-        git -C 'C:\inetpub\wwwroot\zetaslate' remote -v           # show for debug
+      # 2 ── fast-forward working tree to latest commit
+      - name: Pull latest commit
+        shell: powershell
+        run: |
+          git -C $Env:SITE_PATH fetch --all --prune
+          git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 3 ── pull the latest commit
-    - name: Fast-forward production copy
-      shell: powershell
-      run: |
-        cd 'C:\inetpub\wwwroot\zetaslate'
-        git fetch --all --prune
-        git reset --hard origin/main
+      # 3 ── recycle the IIS application pool so new files are served
+      - name: Recycle IIS app-pool
+        shell: powershell
+        run: Restart-WebAppPool $Env:IIS_APPPOOL_NAME
 
-    # 4 ── (optional) recycle the IIS app-pool so the site reloads instantly
-    # - name: Recycle default app-pool
-    #   shell: powershell
-    #   run: Restart-WebAppPool 'DefaultAppPool'
+      # 4 ── (optional) warm up the site so first request is fast
+      - name: Warm-up request
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
