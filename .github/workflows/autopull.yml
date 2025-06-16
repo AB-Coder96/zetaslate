@@ -2,49 +2,59 @@ name: Deploy ZetaSlate (pull + restart IIS)
 
 on:
   push:
-    branches: [ main ]                        # deploy every push to main
+    branches: [ main ]
 
-concurrency:                                  # only one deploy per branch at a time
+concurrency:
   group: zetaslate-deploy-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # folder IIS serves
-  IIS_APPPOOL_NAME: 'ZetaSlatePool'              # kept for reference, not used now
-  WARMUP_URL: 'https://zetaslate.com/'   # your public URL
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # repo path served by IIS
+  WARMUP_URL: 'https://zetaslate.com/'
 
 jobs:
   deploy:
-    runs-on: [ self-hosted, windows, x64 ]       # labels of your runner
+    runs-on: [ self-hosted, windows, x64 ]
+
+    defaults:
+      run:
+        shell: powershell
 
     steps:
-      # 1 ── make the folder “safe” and patch origin with the job token
-      - name: Configure Git for non-interactive fetch
-        shell: powershell
-        run: |
-          git config --global --add safe.directory $Env:SITE_PATH
-          $token = '${{ secrets.GITHUB_TOKEN }}'
-          $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
-          git -C $Env:SITE_PATH remote set-url origin $url
+    # 1 ── teach Git to treat the site folder as safe & patch the remote URL
+    - name: Configure Git for non-interactive fetch
+      run: |
+        git config --global --add safe.directory $Env:SITE_PATH
+        $token = '${{ secrets.GITHUB_TOKEN }}'
+        $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
+        git -C $Env:SITE_PATH remote set-url origin $url
 
-      # 2 ── fast-forward working tree to latest commit
-      - name: Pull latest commit
-        shell: powershell
-        run: |
-          git -C $Env:SITE_PATH fetch --all --prune
-          git -C $Env:SITE_PATH reset --hard origin/main
+    # 2 ── fast-forward to the latest commit
+    - name: Pull latest commit
+      run: |
+        git -C $Env:SITE_PATH fetch --all --prune
+        git -C $Env:SITE_PATH reset --hard origin/main
 
-      # 3 ── restart the entire IIS service so new files are served
-      - name: Restart IIS service
-        shell: powershell
-        run: |
-          Write-Host "Stopping IIS..."
-          iisreset /stop
-          Write-Host "Starting IIS..."
-          iisreset /start
+    # 3 ── install a fresh Python and cache site-wide wheels
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
 
-      # 4 ── (optional) warm up the site so first request is fast
-      - name: Warm-up request
-        shell: powershell
-        run: |
-          Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
+    # 4 ── pip install/update all backend deps (incl. environs)
+    - name: Install requirements
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -r "$Env:SITE_PATH\\requirements.txt"
+
+    # 5 ── restart IIS so the new code + deps are picked up
+    - name: Restart IIS
+      run: |
+        iisreset /stop
+        iisreset /start
+
+    # 6 ── warm-up request so first user hit is instant
+    - name: Warm-up request
+      run: |
+        Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30

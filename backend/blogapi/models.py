@@ -1,5 +1,17 @@
 from django.db import models
 
+class Item(models.Model):
+    title = models.CharField(max_length=200)
+    # -- add any other fields you need, e.g. description, price, etc. --
+
+    created_at = models.DateTimeField(auto_now_add=True)   # optional helpers
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:          # nice in the admin
+        return self.title
+
+
+
 class Post(models.Model):
     title = models.CharField(max_length=200)
     content = models.TextField()
