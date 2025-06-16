@@ -3,14 +3,33 @@
 /* ====== Custom Global Styling ====== */
 
 @layer base {
-  body {
-    @apply bg-fixed bg-cover bg-center min-h-screen text-stone-800;
-    background-image: linear-gradient(rgba(245, 245, 244, 0.6), rgba(245, 245, 244, 0.6)),
-                      url('/bg.png');
-    background-attachment: fixed;
-    background-size: cover;
-    background-position: center;
-  }
+body {
+  /* Tailwind utility classes */
+  @apply bg-fixed bg-cover bg-center min-h-screen text-stone-800;
+
+  /* Blue sky with a glowing sun near the horizon */
+  background-image:
+    /* Sun glow */
+    radial-gradient(circle at 50% 85%, rgba(255, 223, 0, 0.9) 0%, rgba(255, 223, 0, 0.3) 25%, rgba(255, 255, 255, 0) 55%),
+    /* Sky gradient */
+    linear-gradient(180deg, #cfe9ff 0%, #87ceeb 60%, #1e90ff 100%);
+
+  background-attachment: fixed;
+  background-size: cover;
+  background-position: center;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Previous background kept for reference:
+body {
+  @apply bg-fixed bg-cover bg-center min-h-screen text-stone-800;
+  background-image: linear-gradient(rgba(245, 245, 244, 0.6), rgba(245, 245, 244, 0.6)),
+                    url('/bgg.png');
+  background-attachment: fixed;
+  background-size: cover;
+  background-position: center;
+}
+*/
 
   /* Headings (h1-h6): bold, tracking-wide, size, spacing */
   h1 {
