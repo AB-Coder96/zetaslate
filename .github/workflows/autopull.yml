@@ -11,7 +11,7 @@ concurrency:                                  # only one deploy per branch at a 
 env:
   SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # folder IIS serves
   IIS_APPPOOL_NAME: 'ZetaSlatePool'              # kept for reference, not used now
-  WARMUP_URL: 'https://zetaslate.example.com/'   # your public URL
+  WARMUP_URL: 'https://zetaslate.com/'   # your public URL
 
 jobs:
   deploy:
