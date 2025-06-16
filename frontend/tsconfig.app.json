@@ -5,7 +5,13 @@
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "skipLibCheck": true,
+
+    /* ---- 1.  ALIAS SETUP  ---------------------------------- */
+    "baseUrl": ".",                    // required
+    "paths": {
+      "@/*": ["src/*"]                 // '@/file' → 'src/file'
+    },
+    /* --------------------------------------------------------- */
 
     /* Bundler mode */
     "moduleResolution": "bundler",
