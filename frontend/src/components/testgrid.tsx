@@ -1,76 +1,62 @@
-/// <reference types="vite/client" />
-// ---------------------------------------------------------------------------
-//  src/api/client.ts
-// ---------------------------------------------------------------------------
-
-import axios, { AxiosInstance } from "axios";
-import projectConfig from "../project-config.json";   // copied into src
+import { useEffect, useState } from "react";
+import { devClient, prodClient, dedupe, Identifiable } from "@/api/client";
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Helpers
+   Types
    ────────────────────────────────────────────────────────────────────────── */
-declare const process: { env: Record<string, string | undefined> } | undefined;
-
-function env(key: string): string | undefined {
-  // Vite
-  // @ts-ignore
-  if (typeof import.meta !== "undefined" && (import.meta as any).env) {
-    const v = (import.meta as any).env[key];
-    if (v !== undefined) return v;
-  }
-  // CRA / Node fallback
-  if (typeof process !== "undefined" && process.env) {
-    return process.env[key];
-  }
-  return undefined;
+interface Item extends Identifiable {
+  title: string;
+  // add any additional Item-specific fields here
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Config
+   Component
    ────────────────────────────────────────────────────────────────────────── */
-interface ProjectConfig {
-  websiteHost?: string;
-}
+export default function TestGridPage() {
+  const [items, setItems] = useState<Item[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-const WEBSITE_HOST =
-  (projectConfig as ProjectConfig).websiteHost || "api.example.com";
+  useEffect(() => {
+    let cancelled = false;
 
-export const DEV_API_BASE_URL =
-  env("VITE_DEV_API_BASE_URL") ||
-  env("REACT_APP_DEV_API_BASE_URL") ||
-  "http://localhost:8000/api/";
+    (async () => {
+      try {
+        /* ---------- fetch from both APIs in parallel ---------- */
+        const [devRes, prodRes] = await Promise.allSettled([
+          devClient.get<Item[]>("/items"),
+          prodClient.get<Item[]>("/items"),
+        ]);
 
-export const PROD_API_BASE_URL =
-  env("VITE_PROD_API_BASE_URL") ||
-  env("REACT_APP_PROD_API_BASE_URL") ||
-  `https://${WEBSITE_HOST}/api/`;
+        /* ---------- merge whichever responses succeeded ---------- */
+        const merged: Item[] = [];
+        if (devRes.status === "fulfilled") merged.push(...devRes.value.data);
+        if (prodRes.status === "fulfilled") merged.push(...prodRes.value.data);
 
-/* ──────────────────────────────────────────────────────────────────────────
-   Axios clients
-   ────────────────────────────────────────────────────────────────────────── */
-export const devClient: AxiosInstance = axios.create({
-  baseURL: DEV_API_BASE_URL,
-  headers: { "Content-Type": "application/json" },
-  withCredentials: true,
-});
+        /* ---------- dedupe by id & commit to state ---------- */
+        if (!cancelled) setItems(dedupe(merged));
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Unknown error");
+        }
+      }
+    })();
 
-export const prodClient: AxiosInstance = axios.create({
-  baseURL: PROD_API_BASE_URL,
-  headers: { "Content-Type": "application/json" },
-  withCredentials: true,
-});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-/* ──────────────────────────────────────────────────────────────────────────
-   Types & utils
-   ────────────────────────────────────────────────────────────────────────── */
-export interface Identifiable {
-  id: number;                       // 👈️ the only requirement
-}
+  /* ---------- render ---------- */
+  if (error) return <p className="text-red-600">{error}</p>;
 
-export function dedupe<T extends Identifiable>(arr: T[]): T[] {
-  const seen = new Map<number, T>();
-  arr.forEach((el) => {
-    if (!seen.has(el.id)) seen.set(el.id, el);
-  });
-  return Array.from(seen.values());
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+      {items.map((item) => (
+        <div key={item.id} className="rounded border p-4 shadow">
+          <h3 className="font-semibold">{item.title}</h3>
+          {/* render other fields here */}
+        </div>
+      ))}
+    </div>
+  );
 }
