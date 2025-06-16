@@ -1,16 +1,16 @@
-name: Deploy ZetaSlate (pull + recycle)
+name: Deploy ZetaSlate (pull + restart IIS)
 
 on:
   push:
-    branches: [ main ]                # deploy every push to main
+    branches: [ main ]                        # deploy every push to main
 
-concurrency:                           # only one deploy per branch at a time
+concurrency:                                  # only one deploy per branch at a time
   group: zetaslate-deploy-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # folder IIS serves
-  IIS_APPPOOL_NAME: 'ZetaSlatePool'              # name of the app-pool
+  IIS_APPPOOL_NAME: 'ZetaSlatePool'              # kept for reference, not used now
   WARMUP_URL: 'https://zetaslate.example.com/'   # your public URL
 
 jobs:
@@ -34,10 +34,14 @@ jobs:
           git -C $Env:SITE_PATH fetch --all --prune
           git -C $Env:SITE_PATH reset --hard origin/main
 
-      # 3 ── recycle the IIS application pool so new files are served
-      - name: Recycle IIS app-pool
+      # 3 ── restart the entire IIS service so new files are served
+      - name: Restart IIS service
         shell: powershell
-        run: Restart-WebAppPool $Env:IIS_APPPOOL_NAME
+        run: |
+          Write-Host "Stopping IIS..."
+          iisreset /stop
+          Write-Host "Starting IIS..."
+          iisreset /start
 
       # 4 ── (optional) warm up the site so first request is fast
       - name: Warm-up request
