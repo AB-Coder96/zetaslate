@@ -7,8 +7,11 @@ pause
 python -m pip freeze > "backend\requirements.txt"
 
 git add .
-git commit -m "build"
+
+:: commit message = <computer-name> + <this-bat-file-name> + “automatic”
+set "COMMIT_MSG=%COMPUTERNAME% - %~nx0 automatic"
+git commit -m "%COMMIT_MSG%"
 git push
+
 copy /Y "backend\.env.dev" "backend\.env"
 pause
-
