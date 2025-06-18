@@ -21,6 +21,7 @@ jobs:
         shell: powershell
 
     steps:
+
     # 1 ── teach Git to treat the site folder as safe & patch the remote URL
     - name: Configure Git for non-interactive fetch
       run: |
@@ -42,11 +43,11 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
 
-    # 4 ── pip install/update all backend deps (incl. environs)
-    - name: Install requirements
+    # 4 ── pip install/update all backend deps
+    - name: Install backend requirements        # ← changed path here
       run: |
         python -m pip install --upgrade pip
-        python -m pip install -r "$Env:SITE_PATH\\requirements.txt"
+        python -m pip install -r "$Env:SITE_PATH\\backend\\requirements.txt"
 
     # 5 ── restart IIS so the new code + deps are picked up
     - name: Restart IIS
