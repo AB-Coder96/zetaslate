@@ -9,10 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # ————————————————————————————————————————————————————————————————
-  # Path where IIS serves the repo  (already cloned on the runner)
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'
-  # Used to warm-up Django after the restart
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # folder IIS serves
   WARMUP_URL: 'https://zetaslate.com/'
 
 jobs:
@@ -24,8 +21,10 @@ jobs:
         shell: powershell
 
     steps:
-    # 1 ───────────────────────────────────────────────────────────────
-    # Tell GitHub runner that this path is safe and patch the remote URL
+    # 0 ── bring the repo into the workspace so subsequent steps can see it
+    - uses: actions/checkout@v4
+
+    # 1 ── make the on-disk site copy pull-able without prompting
     - name: Configure Git for non-interactive fetch
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -33,39 +32,33 @@ jobs:
         $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
         git -C $Env:SITE_PATH remote set-url origin $url
 
-    # 2 ───────────────────────────────────────────────────────────────
-    # Fast-forward the working copy to the newest commit
-    - name: Pull latest commit
+    # 2 ── fast-forward the IIS-served working tree to main
+    - name: Pull latest commit into SITE_PATH
       run: |
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 3 ───────────────────────────────────────────────────────────────
-    # Install Python + pip cache (points at real requirements.txt)
+    # 3 ── install Python + pip cache (cache hash uses workspace/requirements.txt)
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
         cache: 'pip'
-        # ↓↓↓ exact file so the cache hash can be built
-        cache-dependency-path: '${{ env.SITE_PATH }}\\requirements.txt'
+        cache-dependency-path: 'requirements.txt'   # now resolvable
 
-    # 4 ───────────────────────────────────────────────────────────────
-    # Install / update all backend dependencies
+    # 4 ── install/update all Python deps
     - name: Install backend requirements
       run: |
         python -m pip install --upgrade pip
-        python -m pip install -r "$Env:SITE_PATH\\requirements.txt"
+        python -m pip install -r "${{ github.workspace }}\\requirements.txt"
 
-    # 5 ───────────────────────────────────────────────────────────────
-    # Restart IIS so the new code and packages are picked up
+    # 5 ── restart IIS so new code + deps are loaded
     - name: Restart IIS
       run: |
         iisreset /stop
         iisreset /start
 
-    # 6 ───────────────────────────────────────────────────────────────
-    # First request warms up Django + caches templates
+    # 6 ── warm-up request so first user hit is fast
     - name: Warm-up request
       run: |
         Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
