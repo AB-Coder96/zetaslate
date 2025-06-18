@@ -48,14 +48,14 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
         # ↓↓↓ exact file so the cache hash can be built
-        cache-dependency-path: '${{ env.SITE_PATH }}\\backend\\requirements.txt'
+        cache-dependency-path: '${{ env.SITE_PATH }}\\requirements.txt'
 
     # 4 ───────────────────────────────────────────────────────────────
     # Install / update all backend dependencies
     - name: Install backend requirements
       run: |
         python -m pip install --upgrade pip
-        python -m pip install -r "$Env:SITE_PATH\\backend\\requirements.txt"
+        python -m pip install -r "$Env:SITE_PATH\\requirements.txt"
 
     # 5 ───────────────────────────────────────────────────────────────
     # Restart IIS so the new code and packages are picked up
