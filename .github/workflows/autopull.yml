@@ -9,7 +9,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # repo path served by IIS
+  # ————————————————————————————————————————————————————————————————
+  # Path where IIS serves the repo  (already cloned on the runner)
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'
+  # Used to warm-up Django after the restart
   WARMUP_URL: 'https://zetaslate.com/'
 
 jobs:
@@ -21,8 +24,8 @@ jobs:
         shell: powershell
 
     steps:
-
-    # 1 ── teach Git to treat the site folder as safe & patch the remote URL
+    # 1 ───────────────────────────────────────────────────────────────
+    # Tell GitHub runner that this path is safe and patch the remote URL
     - name: Configure Git for non-interactive fetch
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -30,32 +33,39 @@ jobs:
         $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
         git -C $Env:SITE_PATH remote set-url origin $url
 
-    # 2 ── fast-forward to the latest commit
+    # 2 ───────────────────────────────────────────────────────────────
+    # Fast-forward the working copy to the newest commit
     - name: Pull latest commit
       run: |
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 3 ── install a fresh Python and cache site-wide wheels
+    # 3 ───────────────────────────────────────────────────────────────
+    # Install Python + pip cache (points at real requirements.txt)
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
         cache: 'pip'
+        # ↓↓↓ exact file so the cache hash can be built
+        cache-dependency-path: '${{ env.SITE_PATH }}\\backend\\requirements.txt'
 
-    # 4 ── pip install/update all backend deps
-    - name: Install backend requirements        # ← changed path here
+    # 4 ───────────────────────────────────────────────────────────────
+    # Install / update all backend dependencies
+    - name: Install backend requirements
       run: |
         python -m pip install --upgrade pip
         python -m pip install -r "$Env:SITE_PATH\\backend\\requirements.txt"
 
-    # 5 ── restart IIS so the new code + deps are picked up
+    # 5 ───────────────────────────────────────────────────────────────
+    # Restart IIS so the new code and packages are picked up
     - name: Restart IIS
       run: |
         iisreset /stop
         iisreset /start
 
-    # 6 ── warm-up request so first user hit is instant
+    # 6 ───────────────────────────────────────────────────────────────
+    # First request warms up Django + caches templates
     - name: Warm-up request
       run: |
         Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
