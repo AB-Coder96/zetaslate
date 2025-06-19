@@ -32,6 +32,12 @@ jobs:
         $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
         git -C $Env:SITE_PATH remote set-url origin $url
 
+    # 1½ ── set a global Git identity (used by any commit/tag created later)
+    - name: Set global Git identity
+      run: |
+        git config --global user.name  "AB-Coder96 (GitHub Actions)"
+        git config --global user.email "arazbaghezadeh@gmail.com"
+
     # 2 ── fast-forward the IIS-served working tree to main
     - name: Pull latest commit into SITE_PATH
       run: |
