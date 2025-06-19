@@ -3,7 +3,7 @@ name: Deploy ZetaSlate (pull + restart IIS + ensure Postgres)
 on:
   push:
     branches: [ main ]
-  # Optional: lets you trigger the very first run by hand
+  # lets you run the very first initialisation manually if you want
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # folder IIS serves
   WARMUP_URL: 'https://zetaslate.com/'
 
 jobs:
@@ -23,10 +23,11 @@ jobs:
         shell: powershell
 
     steps:
-    # 0 ── bring the repo into the workspace
+    # ────────────────────────────────────────────────────────────────────────────
+    # 0 ── check out the repo so later steps can see it
     - uses: actions/checkout@v4
 
-    # 1 ── make the on-disk site copy pull-able
+    # 1 ── make the IIS-served working tree pull-able without prompts
     - name: Configure Git for non-interactive fetch
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -34,7 +35,7 @@ jobs:
         $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
         git -C $Env:SITE_PATH remote set-url origin $url
 
-    # 1½ ── set a global Git identity
+    # 1½ ── set a global Git identity (used by any commit/tag created later)
     - name: Set global Git identity
       run: |
         git config --global user.name  "AB-Coder96 (GitHub Actions)"
@@ -54,7 +55,7 @@ jobs:
         cache: 'pip'
         cache-dependency-path: 'requirements.txt'
 
-    # 4 ── install/update all Python deps
+    # 4 ── install / update backend dependencies
     - name: Install backend requirements
       run: |
         python -m pip install --upgrade pip
@@ -67,22 +68,50 @@ jobs:
         iisreset /start
 
     # 5½ ── ensure PostgreSQL cluster exists, then restart or start service
-    - name: Ensure & (re)start PostgreSQL
+    - name: Ensure & (re)start PostgreSQL (auto-detect install path)
       run: |
-        $pgBin       = 'C:\Program Files\PostgreSQL\16\bin'
-        $dataDir     = 'C:\Program Files\PostgreSQL\16\data'
-        $serviceName = 'postgresql-x64-16'
+        # ── find the newest PostgreSQL installation in the registry
+        $instRoot = 'HKLM:\SOFTWARE\PostgreSQL\Installations'
+        if (-not (Test-Path $instRoot)) {
+          Write-Error "No PostgreSQL installation registry root found at $instRoot"
+          exit 1
+        }
+
+        $instKeys = @(Get-ChildItem $instRoot) | Sort-Object PSChildName -Descending
+        if ($instKeys.Count -eq 0) {
+          Write-Error "No PostgreSQL installations found under $instRoot"
+          exit 1
+        }
+
+        # pick the newest (e.g. postgresql-x64-17)
+        $pgKey       = $instKeys[0]
+        $pgProps     = Get-ItemProperty $pgKey.PSPath
+        $pgBin       = $pgProps.Bin_Dir
+        $dataDir     = $pgProps.Data_Dir
+        $serviceName = $pgKey.PSChildName
+
+        Write-Host "Detected PostgreSQL:"
+        Write-Host "  Service  : $serviceName"
+        Write-Host "  Bin dir  : $pgBin"
+        Write-Host "  Data dir : $dataDir"
+
+        if (-not (Test-Path "$pgBin\pg_ctl.exe")) {
+          Write-Error "pg_ctl.exe not found at $pgBin"
+          exit 1
+        }
 
         if (-not (Test-Path $dataDir)) {
-            Write-Host "PostgreSQL data directory not found. Initialising…"
-            & "$pgBin\pg_ctl.exe" initdb -D $dataDir
-            & "$pgBin\pg_ctl.exe" register -N $serviceName -D $dataDir -U "NT AUTHORITY\NetworkService"
-            Set-Service -Name $serviceName -StartupType Automatic
-            Start-Service -Name $serviceName
-        }
-        else {
-            Write-Host "PostgreSQL data directory exists. Restarting service…"
-            Restart-Service -Name $serviceName -Force
+          Write-Host "Data directory missing. Initialising…"
+          & "$pgBin\pg_ctl.exe" initdb -D $dataDir
+          & "$pgBin\pg_ctl.exe" register `
+              -N $serviceName `
+              -D $dataDir `
+              -U "NT AUTHORITY\NetworkService"
+          Set-Service -Name $serviceName -StartupType Automatic
+          Start-Service -Name $serviceName
+        } else {
+          Write-Host "Data directory exists. Restarting service…"
+          Restart-Service -Name $serviceName -Force
         }
 
     # 6 ── warm-up request so first user hit is fast
