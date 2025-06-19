@@ -1,15 +1,17 @@
-name: Deploy ZetaSlate (pull + restart IIS)
+name: Deploy ZetaSlate (pull + restart IIS + ensure Postgres)
 
 on:
   push:
     branches: [ main ]
+  # Optional: lets you trigger the very first run by hand
+  workflow_dispatch:
 
 concurrency:
   group: zetaslate-deploy-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # folder IIS serves
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'
   WARMUP_URL: 'https://zetaslate.com/'
 
 jobs:
@@ -21,10 +23,10 @@ jobs:
         shell: powershell
 
     steps:
-    # 0 ── bring the repo into the workspace so subsequent steps can see it
+    # 0 ── bring the repo into the workspace
     - uses: actions/checkout@v4
 
-    # 1 ── make the on-disk site copy pull-able without prompting
+    # 1 ── make the on-disk site copy pull-able
     - name: Configure Git for non-interactive fetch
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -32,7 +34,7 @@ jobs:
         $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
         git -C $Env:SITE_PATH remote set-url origin $url
 
-    # 1½ ── set a global Git identity (used by any commit/tag created later)
+    # 1½ ── set a global Git identity
     - name: Set global Git identity
       run: |
         git config --global user.name  "AB-Coder96 (GitHub Actions)"
@@ -44,13 +46,13 @@ jobs:
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 3 ── install Python + pip cache (cache hash uses workspace/requirements.txt)
+    # 3 ── install Python + pip cache
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
         cache: 'pip'
-        cache-dependency-path: 'requirements.txt'   # now resolvable
+        cache-dependency-path: 'requirements.txt'
 
     # 4 ── install/update all Python deps
     - name: Install backend requirements
@@ -63,6 +65,25 @@ jobs:
       run: |
         iisreset /stop
         iisreset /start
+
+    # 5½ ── ensure PostgreSQL cluster exists, then restart or start service
+    - name: Ensure & (re)start PostgreSQL
+      run: |
+        $pgBin       = 'C:\Program Files\PostgreSQL\16\bin'
+        $dataDir     = 'C:\Program Files\PostgreSQL\16\data'
+        $serviceName = 'postgresql-x64-16'
+
+        if (-not (Test-Path $dataDir)) {
+            Write-Host "PostgreSQL data directory not found. Initialising…"
+            & "$pgBin\pg_ctl.exe" initdb -D $dataDir
+            & "$pgBin\pg_ctl.exe" register -N $serviceName -D $dataDir -U "NT AUTHORITY\NetworkService"
+            Set-Service -Name $serviceName -StartupType Automatic
+            Start-Service -Name $serviceName
+        }
+        else {
+            Write-Host "PostgreSQL data directory exists. Restarting service…"
+            Restart-Service -Name $serviceName -Force
+        }
 
     # 6 ── warm-up request so first user hit is fast
     - name: Warm-up request
