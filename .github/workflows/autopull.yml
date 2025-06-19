@@ -3,7 +3,6 @@ name: Deploy ZetaSlate (pull + restart IIS + ensure Postgres)
 on:
   push:
     branches: [ main ]
-  # lets you run the very first initialisation manually if you want
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # folder IIS serves
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'
   WARMUP_URL: 'https://zetaslate.com/'
 
 jobs:
@@ -23,11 +22,11 @@ jobs:
         shell: powershell
 
     steps:
-    # ────────────────────────────────────────────────────────────────────────────
-    # 0 ── check out the repo so later steps can see it
+    # ────────────────────────────────────────────────────────────────────────
+    # 0 ── bring the repo into the workspace
     - uses: actions/checkout@v4
 
-    # 1 ── make the IIS-served working tree pull-able without prompts
+    # 1 ── make the IIS-served working tree pull-able
     - name: Configure Git for non-interactive fetch
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -35,19 +34,19 @@ jobs:
         $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
         git -C $Env:SITE_PATH remote set-url origin $url
 
-    # 1½ ── set a global Git identity (used by any commit/tag created later)
+    # 1½ ── set a global Git identity
     - name: Set global Git identity
       run: |
         git config --global user.name  "AB-Coder96 (GitHub Actions)"
         git config --global user.email "arazbaghezadeh@gmail.com"
 
-    # 2 ── fast-forward the IIS-served working tree to main
+    # 2 ── fast-forward the on-disk site to main
     - name: Pull latest commit into SITE_PATH
       run: |
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 3 ── install Python + pip cache
+    # 3 ── set up Python
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -55,7 +54,7 @@ jobs:
         cache: 'pip'
         cache-dependency-path: 'requirements.txt'
 
-    # 4 ── install / update backend dependencies
+    # 4 ── install / update backend deps
     - name: Install backend requirements
       run: |
         python -m pip install --upgrade pip
@@ -67,50 +66,55 @@ jobs:
         iisreset /stop
         iisreset /start
 
-    # 5½ ── ensure PostgreSQL cluster exists, then restart or start service
-    - name: Ensure & (re)start PostgreSQL (auto-detect install path)
+    # 5½ ── ensure PostgreSQL exists, then start/restart it
+    - name: Ensure & (re)start PostgreSQL (discover via Windows service)
       run: |
-        # ── find the newest PostgreSQL installation in the registry
-        $instRoot = 'HKLM:\SOFTWARE\PostgreSQL\Installations'
-        if (-not (Test-Path $instRoot)) {
-          Write-Error "No PostgreSQL installation registry root found at $instRoot"
+        # ── pick the newest PostgreSQL Windows service (e.g. postgresql-x64-17)
+        $pgSvc = Get-WmiObject -Class Win32_Service |
+                 Where-Object { $_.Name -like 'postgresql*' } |
+                 Sort-Object Name -Descending |
+                 Select-Object -First 1
+
+        if (-not $pgSvc) {
+          Write-Error "No Windows service named 'postgresql-x64-*' found. Is PostgreSQL installed?"
           exit 1
         }
 
-        $instKeys = @(Get-ChildItem $instRoot) | Sort-Object PSChildName -Descending
-        if ($instKeys.Count -eq 0) {
-          Write-Error "No PostgreSQL installations found under $instRoot"
+        $serviceName = $pgSvc.Name
+        $pathName    = $pgSvc.PathName
+
+        Write-Host  "Using service : $serviceName"
+        Write-Host  "Image path    : $pathName"
+
+        # ── pull pg_ctl.exe and data dir out of the ImagePath
+        if ($pathName -notmatch '"([^"]+\\pg_ctl\.exe)"\s+runservice.*? -D\s+"([^"]+)"') {
+          Write-Error "Could not parse pg_ctl.exe or data directory from '$pathName'"
           exit 1
         }
 
-        # pick the newest (e.g. postgresql-x64-17)
-        $pgKey       = $instKeys[0]
-        $pgProps     = Get-ItemProperty $pgKey.PSPath
-        $pgBin       = $pgProps.Bin_Dir
-        $dataDir     = $pgProps.Data_Dir
-        $serviceName = $pgKey.PSChildName
+        $pgCtl   = $Matches[1]
+        $dataDir = $Matches[2]
+        $pgBin   = Split-Path $pgCtl
 
-        Write-Host "Detected PostgreSQL:"
-        Write-Host "  Service  : $serviceName"
-        Write-Host "  Bin dir  : $pgBin"
-        Write-Host "  Data dir : $dataDir"
+        Write-Host "pg_ctl.exe     : $pgCtl"
+        Write-Host "Data directory : $dataDir"
 
-        if (-not (Test-Path "$pgBin\pg_ctl.exe")) {
-          Write-Error "pg_ctl.exe not found at $pgBin"
+        if (-not (Test-Path $pgCtl)) {
+          Write-Error "`$pgCtl not found on disk."
           exit 1
         }
 
         if (-not (Test-Path $dataDir)) {
-          Write-Host "Data directory missing. Initialising…"
-          & "$pgBin\pg_ctl.exe" initdb -D $dataDir
-          & "$pgBin\pg_ctl.exe" register `
+          Write-Host "Data directory missing → first-time initialisation…"
+          & $pgCtl initdb -D $dataDir
+          & $pgCtl register `
               -N $serviceName `
               -D $dataDir `
               -U "NT AUTHORITY\NetworkService"
           Set-Service -Name $serviceName -StartupType Automatic
           Start-Service -Name $serviceName
         } else {
-          Write-Host "Data directory exists. Restarting service…"
+          Write-Host "Data directory exists → restarting service…"
           Restart-Service -Name $serviceName -Force
         }
 
