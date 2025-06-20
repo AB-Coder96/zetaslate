@@ -1,4 +1,4 @@
-name: Deploy ZetaSlate (pull + restart IIS + ensure Postgres)
+name: Deploy Site (pull + restart IIS + ensure Postgres)
 
 on:
   push:
@@ -6,119 +6,106 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: zetaslate-deploy-${{ github.ref }}
+  group: site-deploy-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'
-  WARMUP_URL: 'https://zetaslate.com/'
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # <- change only this on a new server
 
 jobs:
   deploy:
     runs-on: [ self-hosted, windows, x64 ]
-
     defaults:
       run:
         shell: powershell
 
     steps:
-    # ────────────────────────────────────────────────────────────────────────
-    # 0 ── bring the repo into the workspace
+    # checkout
     - uses: actions/checkout@v4
 
-    # 1 ── make the IIS-served working tree pull-able
-    - name: Configure Git for non-interactive fetch
+    # derive host → WARMUP_URL + DJANGO_ALLOWED_HOSTS
+    - name: Load project config
+      id: cfg
+      run: |
+        $cfgPath  = "${{ github.workspace }}\project-config.json"
+        $cfg      = Test-Path $cfgPath ? (Get-Content -Raw $cfgPath | ConvertFrom-Json) : @{}
+        $siteName = (Split-Path -Leaf $Env:SITE_PATH)
+        $domain   = $cfg.websitedomain ? $cfg.websitedomain : '.com'
+        $host     = "$siteName$domain"
+        "WARMUP_URL=https://$host/"            | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$host,www.$host" | Out-File $Env:GITHUB_ENV -Append
+        "SITE_NAME=$siteName"                  | Out-File $Env:GITHUB_ENV -Append
+
+    # make working tree pullable
+    - name: Configure Git
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
-        $token = '${{ secrets.GITHUB_TOKEN }}'
-        $url   = "https://x-access-token:$token@github.com/AB-Coder96/zetaslate.git"
+        $url = "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
         git -C $Env:SITE_PATH remote set-url origin $url
 
-    # 1½ ── set a global Git identity
     - name: Set global Git identity
       run: |
-        git config --global user.name  "AB-Coder96 (GitHub Actions)"
-        git config --global user.email "arazbaghezadeh@gmail.com"
+        git config --global user.name  "${{ github.actor }} (GitHub Actions)"
+        git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
-    # 2 ── fast-forward the on-disk site to main
-    - name: Pull latest commit into SITE_PATH
+    - name: Pull site code
       run: |
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 3 ── set up Python
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    # Python
+    - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        cache: 'pip'
+        cache: pip
         cache-dependency-path: 'requirements.txt'
 
-    # 4 ── install / update backend deps
-    - name: Install backend requirements
+    - name: Install requirements
       run: |
         python -m pip install --upgrade pip
-        python -m pip install -r "${{ github.workspace }}\\requirements.txt"
+        python -m pip install -r "${{ github.workspace }}\requirements.txt"
 
-    # 5 ── restart IIS so new code + deps are loaded
+    # IIS restart
     - name: Restart IIS
       run: |
         iisreset /stop
         iisreset /start
 
-    # 5½ ── ensure PostgreSQL exists, then start/restart it
-    - name: Ensure & (re)start PostgreSQL (discover via Windows service)
+    # Ensure Postgres cluster running
+    - name: Ensure & (re)start PostgreSQL
       run: |
-        # ── pick the newest PostgreSQL Windows service (e.g. postgresql-x64-17)
-        $pgSvc = Get-WmiObject -Class Win32_Service |
-                 Where-Object { $_.Name -like 'postgresql*' } |
-                 Sort-Object Name -Descending |
-                 Select-Object -First 1
-
-        if (-not $pgSvc) {
-          Write-Error "No Windows service named 'postgresql-x64-*' found. Is PostgreSQL installed?"
-          exit 1
+        $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
+               Sort-Object Name -Descending | Select-Object -First 1
+        if (-not $svc) { throw 'PostgreSQL service not found' }
+        if ($svc.PathName -notmatch '\"([^\"]+\\pg_ctl\\.exe)\".*?-D\\s+\"([^\"]+)\"') {
+          throw 'Cannot parse service command'
         }
-
-        $serviceName = $pgSvc.Name
-        $pathName    = $pgSvc.PathName
-
-        Write-Host  "Using service : $serviceName"
-        Write-Host  "Image path    : $pathName"
-
-        # ── pull pg_ctl.exe and data dir out of the ImagePath
-        if ($pathName -notmatch '"([^"]+\\pg_ctl\.exe)"\s+runservice.*? -D\s+"([^"]+)"') {
-          Write-Error "Could not parse pg_ctl.exe or data directory from '$pathName'"
-          exit 1
-        }
-
-        $pgCtl   = $Matches[1]
-        $dataDir = $Matches[2]
-        $pgBin   = Split-Path $pgCtl
-
-        Write-Host "pg_ctl.exe     : $pgCtl"
-        Write-Host "Data directory : $dataDir"
-
-        if (-not (Test-Path $pgCtl)) {
-          Write-Error "`$pgCtl not found on disk."
-          exit 1
-        }
-
-        if (-not (Test-Path $dataDir)) {
-          Write-Host "Data directory missing → first-time initialisation…"
-          & $pgCtl initdb -D $dataDir
-          & $pgCtl register `
-              -N $serviceName `
-              -D $dataDir `
-              -U "NT AUTHORITY\NetworkService"
-          Set-Service -Name $serviceName -StartupType Automatic
-          Start-Service -Name $serviceName
+        $pgCtl = $Matches[1]; $data = $Matches[2]
+        if (-not (Test-Path $data)) {
+          & $pgCtl initdb -D $data
+          & $pgCtl register -N $svc.Name -D $data -U 'NT AUTHORITY\NetworkService'
+          Set-Service $svc.Name -StartupType Automatic
+          Start-Service $svc.Name
         } else {
-          Write-Host "Data directory exists → restarting service…"
-          Restart-Service -Name $serviceName -Force
+          Restart-Service $svc.Name -Force
         }
 
-    # 6 ── warm-up request so first user hit is fast
-    - name: Warm-up request
+# ➊—create role & DB once (revised)
+    - name: Ensure DB & role exist
       run: |
-        Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
+        # PowerShell sees the machine-level POSTGRES_PASSWORD already
+        $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD   # <- one line solves it
+
+        $site = $Env:SITE_NAME
+        $db   = $Env:POSTGRES_DB   ? $Env:POSTGRES_DB   : $site
+        $user = $Env:POSTGRES_USER ? $Env:POSTGRES_USER : $site
+        $sup  = $Env:POSTGRES_SUPERUSER
+        $psql = (Get-Command psql.exe).Source
+
+        echo "::add-mask::$Env:PGPASSWORD"
+
+        $roleExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_roles WHERE rolname='$user'"
+        if (-not $roleExists) { & $psql -U $sup -c "CREATE USER $user WITH PASSWORD '$Env:POSTGRES_PASSWORD';" }
+
+        $dbExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_database WHERE datname='$db'"
+        if (-not $dbExists)  { & $psql -U $sup -c "CREATE DATABASE $db OWNER $user;" }
