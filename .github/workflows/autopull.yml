@@ -9,8 +9,9 @@ concurrency:
   group: site-deploy-${{ github.ref }}
   cancel-in-progress: true
 
+# ── Only SITE_PATH is required here; every other variable comes from the server
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # <- change only this on a new server
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # change per server
 
 jobs:
   deploy:
@@ -20,40 +21,53 @@ jobs:
         shell: powershell
 
     steps:
-    # checkout
+    # ────────────────────────────────────────────────────────────────
+    # 0  checkout code
     - uses: actions/checkout@v4
 
-    # derive host → WARMUP_URL + DJANGO_ALLOWED_HOSTS
+    # 0½ derive host & env-vars (PowerShell-5 friendly)
     - name: Load project config
       id: cfg
       run: |
-        $cfgPath  = "${{ github.workspace }}\project-config.json"
-        $cfg      = Test-Path $cfgPath ? (Get-Content -Raw $cfgPath | ConvertFrom-Json) : @{}
-        $siteName = (Split-Path -Leaf $Env:SITE_PATH)
-        $domain   = $cfg.websitedomain ? $cfg.websitedomain : '.com'
-        $host     = "$siteName$domain"
-        "WARMUP_URL=https://$host/"            | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_ALLOWED_HOSTS=$host,www.$host" | Out-File $Env:GITHUB_ENV -Append
-        "SITE_NAME=$siteName"                  | Out-File $Env:GITHUB_ENV -Append
+        $cfgPath = "${{ github.workspace }}\project-config.json"
+        $cfg     = @{}
+        if (Test-Path $cfgPath) {
+          $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json
+        }
 
-    # make working tree pullable
+        $siteName = Split-Path -Leaf $Env:SITE_PATH          # zetaslate
+        $domain   = '.com'
+        if ($cfg -ne $null -and $cfg.PSObject.Properties.Name -contains 'websitedomain' -and $cfg.websitedomain) {
+          $domain = $cfg.websitedomain
+        }
+
+        $host  = "$siteName$domain"        # zetaslate.com
+        $warm  = "https://$host/"
+
+        "WARMUP_URL=$warm"                         | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$host,www.$host"     | Out-File $Env:GITHUB_ENV -Append
+        "SITE_NAME=$siteName"                      | Out-File $Env:GITHUB_ENV -Append
+
+    # 1  make IIS-served working tree pull-able
     - name: Configure Git
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
         $url = "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
         git -C $Env:SITE_PATH remote set-url origin $url
 
+    # 1½ global Git identity
     - name: Set global Git identity
       run: |
         git config --global user.name  "${{ github.actor }} (GitHub Actions)"
         git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
+    # 2  pull latest site code
     - name: Pull site code
       run: |
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # Python
+    # 3  Python
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -65,22 +79,24 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -r "${{ github.workspace }}\requirements.txt"
 
-    # IIS restart
+    # 4  IIS restart
     - name: Restart IIS
       run: |
         iisreset /stop
         iisreset /start
 
-    # Ensure Postgres cluster running
+    # 5  ensure PostgreSQL cluster/service
     - name: Ensure & (re)start PostgreSQL
       run: |
-        $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
+        $svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -like 'postgresql*' } |
                Sort-Object Name -Descending | Select-Object -First 1
         if (-not $svc) { throw 'PostgreSQL service not found' }
+
         if ($svc.PathName -notmatch '\"([^\"]+\\pg_ctl\\.exe)\".*?-D\\s+\"([^\"]+)\"') {
-          throw 'Cannot parse service command'
+          throw 'Cannot parse pg_ctl path or data dir'
         }
         $pgCtl = $Matches[1]; $data = $Matches[2]
+
         if (-not (Test-Path $data)) {
           & $pgCtl initdb -D $data
           & $pgCtl register -N $svc.Name -D $data -U 'NT AUTHORITY\NetworkService'
@@ -90,11 +106,11 @@ jobs:
           Restart-Service $svc.Name -Force
         }
 
-# ➊—create role & DB once (revised)
+    # 5¾ create role & DB once (defaults to site name)
     - name: Ensure DB & role exist
       run: |
-        # PowerShell sees the machine-level POSTGRES_PASSWORD already
-        $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD   # <- one line solves it
+        $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD  # mask later
+        echo "::add-mask::$Env:PGPASSWORD"
 
         $site = $Env:SITE_NAME
         $db   = $Env:POSTGRES_DB   ? $Env:POSTGRES_DB   : $site
@@ -102,10 +118,23 @@ jobs:
         $sup  = $Env:POSTGRES_SUPERUSER
         $psql = (Get-Command psql.exe).Source
 
-        echo "::add-mask::$Env:PGPASSWORD"
+        $roleExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_roles WHERE rolname='$user'" 2>$null
+        if (-not $roleExists) {
+          & $psql -U $sup -c "CREATE USER $user WITH PASSWORD '$Env:POSTGRES_PASSWORD';"
+        }
 
-        $roleExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_roles WHERE rolname='$user'"
-        if (-not $roleExists) { & $psql -U $sup -c "CREATE USER $user WITH PASSWORD '$Env:POSTGRES_PASSWORD';" }
+        $dbExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" 2>$null
+        if (-not $dbExists) {
+          & $psql -U $sup -c "CREATE DATABASE $db OWNER $user;"
+        }
 
-        $dbExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_database WHERE datname='$db'"
-        if (-not $dbExists)  { & $psql -U $sup -c "CREATE DATABASE $db OWNER $user;" }
+    # 6  migrate schema
+    - name: Django migrate
+      run: |
+        cd $Env:SITE_PATH
+        python manage.py migrate --noinput
+
+    # 7  warm-up request
+    - name: Warm-up request
+      run: |
+        Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
