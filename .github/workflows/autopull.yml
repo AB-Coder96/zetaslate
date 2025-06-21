@@ -115,18 +115,17 @@ jobs:
     # ── ensure log folder exists and is writable ──────────────────────
     - name: Ensure Django log directory
       run: |
-        $logDir  = 'C:\inetpub\logs\django'      # path used in WSGI_LOG
-        $appPool = 'zetaslate-backend'           # IIS app-pool name
+       $logDir  = 'C:\inetpub\logs\django'      # path used in WSGI_LOG
+       $appPool = 'zetaslate-backend'           # IIS app-pool name
 
-        if (-not (Test-Path $logDir)) {
-          New-Item -Path $logDir -ItemType Directory | Out-Null
-          Write-Host "Created $logDir"
-        }
+       if (-not (Test-Path $logDir)) {
+        New-Item -Path $logDir -ItemType Directory | Out-Null
+        Write-Host "Created $logDir"
+       }
 
-        # use ${appPool} to stop PowerShell parsing the colon
-        icacls $logDir /grant "IIS AppPool\${appPool}:(M)" /T /C | Out-Null
-        Write-Host "Granted Modify rights to IIS AppPool\$appPool"
-        shell: pwsh
+       icacls $logDir /grant "IIS AppPool\${appPool}:(M)" /T /C | Out-Null
+       Write-Host "Granted Modify rights to IIS AppPool\$appPool"
+
     # ── 3  Restart IIS ─────────────────────────────────────────────
     - name: Restart IIS
       run: |
