@@ -9,10 +9,8 @@ concurrency:
   group: site-deploy-${{ github.ref }}
   cancel-in-progress: true
 
-# ── Change only this per server ───────────────────────────────────────────────
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'      # IIS site folder
-# ──────────────────────────────────────────────────────────────────────────────
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # IIS site folder
 
 jobs:
   deploy:
@@ -22,32 +20,25 @@ jobs:
         shell: powershell
 
     steps:
-    # 0 ── check out repo
+    # 0 ── checkout
     - uses: actions/checkout@v4
 
-    # 0½ ── derive host + export env-vars (compatible with PowerShell 5)
+    # 0½ ── derive host & env-vars (PowerShell-5, no reserved vars)
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
-        $cfg     = @{}
-        if (Test-Path $cfgPath) {
-          $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json
-        }
+        $cfg     = Test-Path $cfgPath ? (Get-Content -Raw $cfgPath | ConvertFrom-Json) : @{}
 
-        $siteName = Split-Path -Leaf $Env:SITE_PATH   # ⇒ zetaslate
-        $domain   = '.com'
-        if ($cfg -ne $null -and $cfg.PSObject.Properties['websitedomain']) {
-          if ($cfg.websitedomain) { $domain = $cfg.websitedomain }
-        }
-
-        $siteHost = "$siteName$domain"                # zetaslate.com
+        $siteName = Split-Path -Leaf $Env:SITE_PATH
+        $domain   = ($cfg.websitedomain ? $cfg.websitedomain : '.com')
+        $siteHost = "$siteName$domain"
         $warmUrl  = "https://$siteHost/"
 
         "WARMUP_URL=$warmUrl"                            | Out-File $Env:GITHUB_ENV -Append
         "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"   | Out-File $Env:GITHUB_ENV -Append
         "SITE_NAME=$siteName"                            | Out-File $Env:GITHUB_ENV -Append
 
-    # 1 ── make the IIS working tree pull-able
+    # 1 ── configure Git for IIS folder
     - name: Configure Git
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -59,13 +50,13 @@ jobs:
         git config --global user.name  "${{ github.actor }} (GitHub Actions)"
         git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
-    # 2 ── pull latest code into IIS folder
+    # 2 ── pull latest code
     - name: Pull site code
       run: |
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 3 ── Python + requirements
+    # 3 ── Python & requirements
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -77,13 +68,13 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -r "${{ github.workspace }}\requirements.txt"
 
-    # 4 ── restart IIS so new code is loaded
+    # 4 ── restart IIS
     - name: Restart IIS
       run: |
         iisreset /stop
         iisreset /start
 
-    # 5 ── ensure PostgreSQL cluster / service (robust path parsing)
+    # 5 ── ensure PostgreSQL cluster/service (token-based parsing)
     - name: Ensure & (re)start PostgreSQL
       run: |
         $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
@@ -93,15 +84,16 @@ jobs:
         Write-Host  "Service name : $($svc.Name)"
         Write-Host  "Image path   : $($svc.PathName)"
 
-        # locate pg_ctl.exe
-        if ($svc.PathName -match '"?([^\" ]*\\pg_ctl\\.exe)') {
-          $pgCtl = $Matches[1]
-        } else { throw 'Cannot find pg_ctl.exe in service command' }
+        # ---- tokenise the command line -------------------------------------
+        $tokens = ($svc.PathName -split '\s+').Trim('"')
+        $pgCtl  = ($tokens | ? { $_ -match 'pg_ctl\.exe$' } | Select-Object -First 1)
+        if (-not $pgCtl) { throw 'pg_ctl.exe not found in service command' }
 
-        # locate -D data directory
-        if ($svc.PathName -match '-D\\s+\"?([^\" ]+)') {
-          $data = $Matches[1]
-        } else { throw 'Cannot find -D <data dir> in service command' }
+        $dIdx = $tokens.IndexOf('-D')
+        if ($dIdx -lt 0 -or $dIdx + 1 -ge $tokens.Count) {
+          throw 'Data directory (-D) not specified in service command'
+        }
+        $data = $tokens[$dIdx + 1]
 
         Write-Host "pg_ctl.exe    : $pgCtl"
         Write-Host "Data dir      : $data"
@@ -144,7 +136,7 @@ jobs:
         cd $Env:SITE_PATH
         python manage.py migrate --noinput
 
-    # 7 ── warm-up request so first hit is fast
+    # 7 ── warm-up
     - name: Warm-up request
       run: |
         Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
