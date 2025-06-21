@@ -11,9 +11,9 @@ concurrency:
 
 # ─── EDIT PER SERVER ────────────────────────────────────────────────
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # public repo root
-  PY_EXE:   'C:\\Python313\\python.exe'          # system Python IIS must load
-# ────────────────────────────────────────────────────────────────────
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # repo root served by IIS
+  PY_EXE:   'C:\\Python313\\python.exe'          # system Python IIS must run
+# ───────────────────────────────────────────────────────────────────
 
 jobs:
   deploy:
@@ -26,7 +26,7 @@ jobs:
     # ── 0. Checkout repository ─────────────────────────────────────
     - uses: actions/checkout@v4
 
-    # ── 0½. Build host-name env-vars for Django ────────────────────
+    # ── 0½. Derive host-names and export env vars (no ternaries) ───
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
@@ -34,11 +34,14 @@ jobs:
         if (Test-Path $cfgPath) { $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json }
 
         $site = Split-Path -Leaf $Env:SITE_PATH
-        $dom  = ($cfg.PSObject.Properties['websitedomain'] -and $cfg.websitedomain) ? $cfg.websitedomain : '.com'
+        $dom  = '.com'
+        if ($cfg -ne $null -and $cfg.PSObject.Properties['websitedomain'] -and $cfg.websitedomain) {
+          $dom = $cfg.websitedomain
+        }
 
-        $root   = "$site$dom"
-        $admin  = "admin.$root"
-        $api    = "api.$root"
+        $root  = "$site$dom"
+        $admin = "admin.$root"
+        $api   = "api.$root"
 
         "WARMUP_URL=https://$root/"                                     | Out-File $Env:GITHUB_ENV -Append
         "DJANGO_ALLOWED_HOSTS=$root,www.$root,$admin,$api"              | Out-File $Env:GITHUB_ENV -Append
@@ -62,7 +65,7 @@ jobs:
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # ── 2. Python & project requirements ────────────────────────────
+    # ── 2. Python & project dependencies ────────────────────────────
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -74,21 +77,24 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -r "${{ github.workspace }}\backend\requirements.txt"
 
-    # ── 2½. Ensure wfastcgi installed & FastCGI-mapped ──────────────
+    # ── 2½. Ensure wfastcgi present & FastCGI-mapped (idempotent) ───
     - name: Ensure wfastcgi global install
       run: |
         # locate a writable system Python
-        $py = (Test-Path $Env:PY_EXE) ? $Env:PY_EXE : (Get-Command python.exe).Source
-        Write-Host "Using Python at $py"
+        if (Test-Path $Env:PY_EXE) {
+          $py = $Env:PY_EXE
+        } else {
+          $py = (Get-Command python.exe).Source
+          Write-Host "PY_EXE not found, using $py"
+        }
 
-        # (re)install wfastcgi idempotently
+        # install/upgrade wfastcgi quietly
         & $py -m pip install --quiet --upgrade wfastcgi
 
-        # FastCGI signature to detect duplicates
+        # add mapping only if missing
         $fcgi      = Join-Path (Split-Path $py) 'Scripts\wfastcgi.py'
         $signature = "fullPath='$py',arguments='|$fcgi'"
-
-        $existing = & "$env:windir\System32\inetsrv\appcmd.exe" list config `
+        $existing  = & "$env:windir\System32\inetsrv\appcmd.exe" list config `
                        /section:system.webServer/fastCgi /text:* 2>$null
 
         if ($existing -notmatch [regex]::Escape($signature)) {
@@ -100,13 +106,13 @@ jobs:
           Write-Host "FastCGI mapping already exists"
         }
 
-    # ── 3. Restart IIS so new handlers/certs load ───────────────────
+    # ── 3. Restart IIS ──────────────────────────────────────────────
     - name: Restart IIS
       run: |
         iisreset /stop
         iisreset /start
 
-    # ── 4. Ensure PostgreSQL cluster/service ────────────────────────
+    # ── 4. PostgreSQL cluster / service ─────────────────────────────
     - name: Ensure & (re)start PostgreSQL
       run: |
         $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
@@ -131,19 +137,19 @@ jobs:
           Restart-Service $svc.Name -Force
         }
 
-    # ── 4½. Ensure app role & DB ────────────────────────────────────
+    # ── 4½. Ensure app role & DB exist ─────────────────────────────
     - name: Ensure DB & role exist
       run: |
         $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
         echo "::add-mask::$Env:PGPASSWORD"
 
-        $db   = ($Env:POSTGRES_DB   ? $Env:POSTGRES_DB   : $Env:SITE_NAME)
-        $user = ($Env:POSTGRES_USER ? $Env:POSTGRES_USER : $Env:SITE_NAME)
-        $sup  = $Env:POSTGRES_SUPERUSER
+        if ($Env:POSTGRES_DB)   { $db   = $Env:POSTGRES_DB }   else { $db   = $Env:SITE_NAME }
+        if ($Env:POSTGRES_USER) { $user = $Env:POSTGRES_USER } else { $user = $Env:SITE_NAME }
 
-        $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
-               Sort-Object Name -Descending | Select-Object -First 1
-        $bin = ''
+        $sup  = $Env:POSTGRES_SUPERUSER
+        $svc  = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
+                Sort-Object Name -Descending | Select-Object -First 1
+        $bin  = ''
         if ($svc.PathName -match '"([^"]+\\)pg_ctl\.exe"')      { $bin = $Matches[1] }
         elseif ($svc.PathName -match '([^\s"]+\\)pg_ctl\.exe')  { $bin = $Matches[1] }
 
@@ -159,7 +165,7 @@ jobs:
           & "$psql" -U $sup -c "CREATE DATABASE $db OWNER $user;"
         }
 
-    # ── 5. Django migrate ───────────────────────────────────────────
+    # ── 5. Django migrate ──────────────────────────────────────────
     - name: Django migrate
       run: |
         $proj = Join-Path $Env:SITE_PATH 'backend'
@@ -167,7 +173,7 @@ jobs:
         Set-Location $proj
         python manage.py migrate --noinput
 
-    # ── 6. Warm-up request ──────────────────────────────────────────
+    # ── 6. Warm-up request ─────────────────────────────────────────
     - name: Warm-up request
       run: |
         Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
