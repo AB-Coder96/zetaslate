@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'     # IIS site folder
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'      # IIS site folder
 
 jobs:
   deploy:
@@ -20,33 +20,28 @@ jobs:
         shell: powershell
 
     steps:
-    # 0 ── checkout repo
+    # 0 ── check out repo
     - uses: actions/checkout@v4
 
-    # 0½ ── derive host & export env-vars (PowerShell-5 safe)
+    # 0½ ── derive host & export env (PowerShell-5 safe)
     - name: Load project config
       run: |
+        $cfg = @{}
         $cfgPath = "${{ github.workspace }}\project-config.json"
-        $cfg     = @{}
         if (Test-Path $cfgPath) {
           $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json
         }
 
-        $siteName = Split-Path -Leaf $Env:SITE_PATH            # zetaslate
-
-        $domain = '.com'
-        if ($cfg -ne $null) {
-          if ($cfg.PSObject.Properties['websitedomain'] -and $cfg.websitedomain) {
-            $domain = $cfg.websitedomain
-          }
+        $siteName = Split-Path -Leaf $Env:SITE_PATH
+        $domain   = '.com'
+        if ($cfg -ne $null -and $cfg.PSObject.Properties['websitedomain'] -and $cfg.websitedomain) {
+          $domain = $cfg.websitedomain
         }
 
-        $siteHost = "$siteName$domain"                         # zetaslate.com
-        $warmUrl  = "https://$siteHost/"
-
-        "WARMUP_URL=$warmUrl"                                | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"       | Out-File $Env:GITHUB_ENV -Append
-        "SITE_NAME=$siteName"                                | Out-File $Env:GITHUB_ENV -Append
+        $siteHost = "$siteName$domain"
+        "WARMUP_URL=https://$siteHost/"                    | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"     | Out-File $Env:GITHUB_ENV -Append
+        "SITE_NAME=$siteName"                              | Out-File $Env:GITHUB_ENV -Append
 
     # 1 ── configure Git for IIS folder
     - name: Configure Git
@@ -55,6 +50,7 @@ jobs:
         $url = "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
         git -C $Env:SITE_PATH remote set-url origin $url
 
+    # 1½ ── global identity
     - name: Set global Git identity
       run: |
         git config --global user.name  "${{ github.actor }} (GitHub Actions)"
@@ -66,7 +62,7 @@ jobs:
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 3 ── Python & requirements
+    # 3 ── Python & deps
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -84,42 +80,45 @@ jobs:
         iisreset /stop
         iisreset /start
 
-    # 5 ── ensure PostgreSQL cluster/service (token parsing, no regex pitfalls)
+    # 5 ── ensure PostgreSQL cluster / service (quote-aware regex parsing)
     - name: Ensure & (re)start PostgreSQL
       run: |
-        $svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -like 'postgresql*' } |
+        $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
                Sort-Object Name -Descending | Select-Object -First 1
         if (-not $svc) { throw 'PostgreSQL service not found' }
 
         $cmd = $svc.PathName
-        Write-Host  "Service name : $($svc.Name)"
-        Write-Host  "Image path   : $cmd"
+        Write-Host "Service name : $($svc.Name)"
+        Write-Host "Image path   : $cmd"
 
-        # tokenise command line
-        $tokens = ($cmd -split '\s+') | ForEach-Object { $_.Trim('"') }
-        $pgCtl  = ($tokens | Where-Object { $_ -match 'pg_ctl\.exe$' } | Select-Object -First 1)
-        if (-not $pgCtl) { throw 'pg_ctl.exe not found in command line' }
+        # capture pg_ctl.exe (quoted OR unquoted)
+        if ($cmd -match '"([^"]+\\pg_ctl\.exe)"') {
+          $pgCtl = $Matches[1]
+        } elseif ($cmd -match '([^\s"]+\\pg_ctl\.exe)') {
+          $pgCtl = $Matches[1]
+        } else { throw 'pg_ctl.exe not found in service command' }
 
-        $dIdx = $tokens.IndexOf('-D')
-        if ($dIdx -lt 0 -or $dIdx + 1 -ge $tokens.Count) {
-          throw '-D <data dir> not found in command line'
-        }
-        $data = $tokens[$dIdx + 1]
+        # capture data directory after -D (quoted OR unquoted)
+        if ($cmd -match '-D\s+"([^"]+)"') {
+          $data = $Matches[1]
+        } elseif ($cmd -match '-D\s+([^\s"]+)') {
+          $data = $Matches[1]
+        } else { throw '-D <data dir> not found in service command' }
 
         Write-Host "pg_ctl.exe    : $pgCtl"
         Write-Host "Data dir      : $data"
 
         if (-not (Test-Path $data)) {
           Write-Host 'Initialising PostgreSQL cluster …'
-          & $pgCtl initdb -D $data
-          & $pgCtl register -N $svc.Name -D $data -U 'NT AUTHORITY\NetworkService'
+          & "$pgCtl" initdb -D "$data"
+          & "$pgCtl" register -N $svc.Name -D "$data" -U 'NT AUTHORITY\NetworkService'
           Set-Service $svc.Name -StartupType Automatic
           Start-Service $svc.Name
         } else {
           Restart-Service $svc.Name -Force
         }
 
-    # 5¾ ── create role & DB on first run
+    # 5¾ ── create DB & role once
     - name: Ensure DB & role exist
       run: |
         $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
@@ -131,12 +130,12 @@ jobs:
         $sup  = $Env:POSTGRES_SUPERUSER
         $psql = (Get-Command psql.exe).Source
 
-        $roleExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_roles WHERE rolname='$user'" 2>$null
+        $roleExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_roles WHERE rolname='$user'"
         if (-not $roleExists) {
           & $psql -U $sup -c "CREATE USER $user WITH PASSWORD '$Env:POSTGRES_PASSWORD';"
         }
 
-        $dbExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" 2>$null
+        $dbExists = & $psql -U $sup -tAc "SELECT 1 FROM pg_database WHERE datname='$db'"
         if (-not $dbExists) {
           & $psql -U $sup -c "CREATE DATABASE $db OWNER $user;"
         }
