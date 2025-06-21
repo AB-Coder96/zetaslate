@@ -17,3 +17,4 @@ urlpatterns = [
     # Router-generated endpoints: /posts/, /comments/, /likes/, etc.
     path("", include(router.urls)),
 ]
+__all__ = ["router", "urlpatterns"]
