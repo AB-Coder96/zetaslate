@@ -12,7 +12,7 @@ concurrency:
 # ─── EDIT PER SERVER ────────────────────────────────────────────────
 env:
   SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'      # IIS site folder
-  PY_EXE:   'C:\\Python311\\python.exe'             # system Python used by IIS
+  PY_EXE:   'C:\\Python313\\python.exe'             # system Python used by IIS
 # ───────────────────────────────────────────────────────────────────
 
 jobs:
