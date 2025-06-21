@@ -4,7 +4,12 @@ from django.contrib import admin
 from backend import urls
 
 urlpatterns = patterns('',
-    host(r'www|zetaslate', urls,   name='www'),      # www.zetaslate.com
-    host(r'admin',          'backend.host_admin', name='admin'),
-    host(r'api',            'backend.host_api',   name='api'),
+    # API subdomain - points to your DRF endpoints
+    host(r'api', 'backend.host_api', name='api'),
+    
+    # Admin subdomain - points to Django admin
+    host(r'admin', 'backend.host_admin', name='admin'),
+    
+    # No host pattern for www/root - handled by IIS directly
+    # (This is where your frontend is served from)
 )

@@ -41,16 +41,19 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", required=True)
 DEBUG = env("DJANGO_DEBUG", "False").lower() == "true"
 
 # Update your ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS handling:
+# settings.py (updated but keeping your style)
+
+# Allowed hosts - now with clear documentation
 ALLOWED_HOSTS = env(
     "DJANGO_ALLOWED_HOSTS", 
-    f"{SITE_NAME}.com,www.{SITE_NAME}.com,admin.{SITE_NAME}.com,api.{SITE_NAME}.com"
+    f"{SITE_NAME}.com,www.{SITE_NAME}.com,admin.{SITE_NAME}.com,api.{SITE_NAME.com}"
 ).split(",")
 
+# CSRF - explicitly including all needed origins
 CSRF_TRUSTED_ORIGINS = env(
     "DJANGO_CSRF_TRUSTED", 
     f"https://{SITE_NAME}.com,https://www.{SITE_NAME}.com,https://admin.{SITE_NAME}.com,https://api.{SITE_NAME}.com"
 ).split(",") if not DEBUG else []
-
 # ─────────────────────────────────────────────────────────────────────────────
 # apps & middleware
 # ─────────────────────────────────────────────────────────────────────────────
