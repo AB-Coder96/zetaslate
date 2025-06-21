@@ -44,16 +44,30 @@ DEBUG = env("DJANGO_DEBUG", "False").lower() == "true"
 # settings.py (updated but keeping your style)
 
 # Allowed hosts - now with clear documentation
-ALLOWED_HOSTS = env(
-    "DJANGO_ALLOWED_HOSTS", 
-    f"{SITE_NAME}.com,www.{SITE_NAME}.com,admin.{SITE_NAME}.com,api.{SITE_NAME.com}"
-).split(",")
+ALLOWED_HOSTS = [
+    # one long CSV string works too, but a list is clearer
+    f"{SITE_NAME}.com",
+    f"www.{SITE_NAME}.com",
+    f"admin.{SITE_NAME}.com",
+    f"api.{SITE_NAME}.com",
+]
 
 # CSRF - explicitly including all needed origins
-CSRF_TRUSTED_ORIGINS = env(
-    "DJANGO_CSRF_TRUSTED", 
-    f"https://{SITE_NAME}.com,https://www.{SITE_NAME}.com,https://admin.{SITE_NAME}.com,https://api.{SITE_NAME}.com"
-).split(",") if not DEBUG else []
+# backend/settings.py  – CSRF_TRUSTED_ORIGINS
+CSRF_TRUSTED_ORIGINS = (
+    env(
+        "DJANGO_CSRF_TRUSTED",
+        default=(
+            f"https://{SITE_NAME}.com,"
+            f"https://www.{SITE_NAME}.com,"
+            f"https://admin.{SITE_NAME}.com,"
+            f"https://api.{SITE_NAME}.com"
+        ),
+    ).split(",")
+    if not DEBUG
+    else []
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # apps & middleware
 # ─────────────────────────────────────────────────────────────────────────────
