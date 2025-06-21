@@ -16,6 +16,7 @@ cycler==0.12.1
 DateTime==5.4
 Django==5.0.3
 django-cors-headers==4.6.0
+django-hosts==7.0.0
 django-markdownx==4.0.7
 django-redirects==0.6.0
 djangorestframework==3.15.1
