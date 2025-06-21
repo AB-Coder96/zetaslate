@@ -9,8 +9,10 @@ concurrency:
   group: site-deploy-${{ github.ref }}
   cancel-in-progress: true
 
+# ─── EDIT PER SERVER ────────────────────────────────────────────────
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'    # IIS folder
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'        # IIS site folder
+# ───────────────────────────────────────────────────────────────────
 
 jobs:
   deploy:
@@ -20,10 +22,10 @@ jobs:
         shell: powershell
 
     steps:
-    # 0 ── checkout
+    # 0 ── check out code
     - uses: actions/checkout@v4
 
-    # 0½ ── derive host (PowerShell-5 safe)
+    # 0½ ── derive host & export env-vars (PowerShell-5 safe, no $Host clash)
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
@@ -33,17 +35,20 @@ jobs:
         }
 
         $siteName = Split-Path -Leaf $Env:SITE_PATH
-        $domain   = '.com'
-        if ($cfg -ne $null -and $cfg.PSObject.Properties['websitedomain']) {
-          if ($cfg.websitedomain) { $domain = $cfg.websitedomain }
+
+        $domain = '.com'
+        if ($cfg -ne $null -and $cfg.PSObject.Properties['websitedomain'] -and $cfg.websitedomain) {
+          $domain = $cfg.websitedomain
         }
 
         $siteHost = "$siteName$domain"
-        "WARMUP_URL=https://$siteHost/"                   | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"    | Out-File $Env:GITHUB_ENV -Append
-        "SITE_NAME=$siteName"                             | Out-File $Env:GITHUB_ENV -Append
 
-    # 1 ── configure Git for IIS tree
+        "WARMUP_URL=https://$siteHost/"                    | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"     | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_CSRF_TRUSTED=https://$siteHost"            | Out-File $Env:GITHUB_ENV -Append   # ← new line
+        "SITE_NAME=$siteName"                              | Out-File $Env:GITHUB_ENV -Append
+
+    # 1 ── Git for IIS tree
     - name: Configure Git
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -103,35 +108,30 @@ jobs:
           Restart-Service $svc.Name -Force
         }
 
-    # 4½ ── ensure role & DB once (all if/else)
+    # 4½ ── ensure role & DB once
     - name: Ensure DB & role exist
       run: |
         $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
         echo "::add-mask::$Env:PGPASSWORD"
 
-        # decide names
         if ($Env:POSTGRES_DB)   { $db   = $Env:POSTGRES_DB }   else { $db   = $Env:SITE_NAME }
         if ($Env:POSTGRES_USER) { $user = $Env:POSTGRES_USER } else { $user = $Env:SITE_NAME }
 
-        $sup = $Env:POSTGRES_SUPERUSER
-
-        # find bin dir from service cmd
-        $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
-               Sort-Object Name -Descending | Select-Object -First 1
-        $bin = ''
+        $sup  = $Env:POSTGRES_SUPERUSER
+        $svc  = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
+                Sort-Object Name -Descending | Select-Object -First 1
+        $bin  = ''
         if ($svc.PathName -match '"([^"]+\\)pg_ctl\.exe"')      { $bin = $Matches[1] }
         elseif ($svc.PathName -match '([^\s"]+\\)pg_ctl\.exe')  { $bin = $Matches[1] }
 
         if ($bin) { $psql = $bin + 'psql.exe' } else { $psql = 'psql' }
         if (-not (Test-Path $psql)) { $psql = 'psql' }
 
-        # role
         $roleExists = & "$psql" -U $sup -tAc "SELECT 1 FROM pg_roles WHERE rolname='$user'"
         if (-not $roleExists) {
           & "$psql" -U $sup -c "CREATE USER $user WITH PASSWORD '$Env:POSTGRES_PASSWORD';"
         }
 
-        # database
         $dbExists = & "$psql" -U $sup -tAc "SELECT 1 FROM pg_database WHERE datname='$db'"
         if (-not $dbExists) {
           & "$psql" -U $sup -c "CREATE DATABASE $db OWNER $user;"
