@@ -9,10 +9,10 @@ concurrency:
   group: site-deploy-${{ github.ref }}
   cancel-in-progress: true
 
-# ─────── EDIT PER SERVER ──────────────────────────────────────────────
+# ───── EDIT PER SERVER ──────────────────────────────────────────────
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # IIS folder
-# ──────────────────────────────────────────────────────────────────────
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # IIS site folder
+# ────────────────────────────────────────────────────────────────────
 
 jobs:
   deploy:
@@ -22,10 +22,10 @@ jobs:
         shell: powershell
 
     steps:
-    # 0 ── check-out repo
+    # 0 ── checkout
     - uses: actions/checkout@v4
 
-    # 0½ ── derive host & export env-vars (PowerShell-5 safe)
+    # 0½ ── derive host vars (PowerShell-5 safe)
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
@@ -43,7 +43,7 @@ jobs:
         "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"| Out-File $Env:GITHUB_ENV -Append
         "SITE_NAME=$siteName"                          | Out-File $Env:GITHUB_ENV -Append
 
-    # 1 ── configure Git for IIS working tree
+    # 1 ── configure Git for IIS tree
     - name: Configure Git
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -61,7 +61,7 @@ jobs:
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 3 ── Python & requirements
+    # 3 ── Python & deps
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -104,7 +104,7 @@ jobs:
           Restart-Service $svc.Name -Force
         }
 
-    # 5¾ ── create role & DB once (PowerShell-5 safe)
+    # 5¾ ── create role & DB once
     - name: Ensure DB & role exist
       run: |
         $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
@@ -133,7 +133,7 @@ jobs:
           & "$psql" -U $sup -c "CREATE DATABASE $db OWNER $user;"
         }
 
-    # 6 ── Django migrations (auto-locate manage.py)
+    # 6 ── Django migrate (auto-find manage.py)
     - name: Django migrate
       run: |
         $manage = Get-ChildItem -Path $Env:SITE_PATH -Filter manage.py -Recurse -Depth 3 |
