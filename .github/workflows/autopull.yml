@@ -11,8 +11,8 @@ concurrency:
 
 # ─── EDIT PER SERVER ────────────────────────────────────────────────
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'        # IIS site folder
-  PY_EXE:   'C:\\Python311\\python.exe'               # system Python IIS runs
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'      # IIS site folder
+  PY_EXE:   'C:\\Python311\\python.exe'             # system Python used by IIS
 # ───────────────────────────────────────────────────────────────────
 
 jobs:
@@ -23,14 +23,14 @@ jobs:
         shell: powershell
 
     steps:
-    # 0 ── check out code
+    # 0 ── check out repo
     - uses: actions/checkout@v4
 
-    # 0½ ── derive host & export env-vars
+    # 0½ ── build env-vars for Django (PowerShell-5 safe)
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
-        $cfg     = @{}
+        $cfg     = @{ }
         if (Test-Path $cfgPath) { $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json }
 
         $siteName = Split-Path -Leaf $Env:SITE_PATH
@@ -39,16 +39,16 @@ jobs:
           $domain = $cfg.websitedomain
         }
 
-        $siteHost   = "$siteName$domain"
-        $adminHost  = "admin.$siteHost"
-        $apiHost    = "api.$siteHost"
+        $siteHost  = "$siteName$domain"
+        $adminHost = "admin.$siteHost"
+        $apiHost   = "api.$siteHost"
 
-        "WARMUP_URL=https://$siteHost/"                                | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost,$adminHost,$apiHost" | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_CSRF_TRUSTED=https://$siteHost,https://$adminHost,https://$apiHost" | Out-File $Env:GITHUB_ENV -Append
-        "SITE_NAME=$siteName"                                          | Out-File $Env:GITHUB_ENV -Append
+        "WARMUP_URL=https://$siteHost/"                                                | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost,$adminHost,$apiHost"             | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_CSRF_TRUSTED=https://$siteHost,https://$adminHost,https://$apiHost"    | Out-File $Env:GITHUB_ENV -Append
+        "SITE_NAME=$siteName"                                                          | Out-File $Env:GITHUB_ENV -Append
 
-    # 1 ── Git for IIS tree
+    # 1 ── configure Git for IIS-served tree
     - name: Configure Git
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -60,12 +60,12 @@ jobs:
         git config --global user.name  "${{ github.actor }} (GitHub Actions)"
         git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
-    - name: Pull site code
+    - name: Pull latest commit into IIS folder
       run: |
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 2 ── Python & install deps
+    # 2 ── Python & project dependencies
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -77,30 +77,36 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -r "${{ github.workspace }}\backend\requirements.txt"
 
-    # 2½ ── ensure wfastcgi is present & registered (idempotent)
+    # 2½ ── ensure wfastcgi is present and mapped (idempotent)
     - name: Ensure wfastcgi global install
       run: |
-        $py   = $Env:PY_EXE
-        $pip  = "$py -m pip"
+        # --- choose Python executable IIS should launch -------------------
+        $py = $Env:PY_EXE
+        if (-not (Test-Path $py)) {
+          $py = (Get-Command python.exe).Source
+          Write-Host "PY_EXE not found, using $py"
+        }
+
+        # --- install wfastcgi package if missing --------------------------
+        & $py -m pip show wfastcgi *> $null
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Installing wfastcgi package globally..."
+          & $py -m pip install wfastcgi
+        }
+
+        # --- register FastCGI mapping if absent ---------------------------
         $fcgi = [System.IO.Path]::Combine((Split-Path $py), 'Scripts', 'wfastcgi.py')
-
-        # install package if missing
-        & $pip show wfastcgi 2>$null
-        if ($LASTEXITCODE -ne 0) { & $pip install wfastcgi }
-
-        # add FastCGI mapping if absent
-        $cfg = & "$env:windir\system32\inetsrv\appcmd.exe" list config `
-                  /section:system.webServer/fastCgi
+        $cfg  = & "$env:windir\system32\inetsrv\appcmd.exe" list config /section:system.webServer/fastCgi
         if ($cfg -notmatch [regex]::Escape($fcgi)) {
+          Write-Host "Adding FastCGI mapping for wfastcgi..."
           & "$env:windir\system32\inetsrv\appcmd.exe" set config `
               /section:system.webServer/fastCgi `
               "/+[fullPath='$py',arguments='|$fcgi']"
-          Write-Host "wfastcgi mapping added"
         } else {
-          Write-Host "wfastcgi mapping already exists"
+          Write-Host "FastCGI mapping already exists"
         }
 
-    # 3 ── restart IIS
+    # 3 ── restart IIS so new modules/bindings load
     - name: Restart IIS
       run: |
         iisreset /stop
@@ -116,11 +122,11 @@ jobs:
         $cmd = $svc.PathName
         if ($cmd -match '"([^"]+\\pg_ctl\.exe)"')      { $pgCtl = $Matches[1] }
         elseif ($cmd -match '([^\s"]+\\pg_ctl\.exe)')  { $pgCtl = $Matches[1] }
-        else { throw 'pg_ctl.exe not found' }
+        else { throw 'pg_ctl.exe not found in service command' }
 
         if ($cmd -match '-D\s+"([^"]+)"')      { $data = $Matches[1] }
         elseif ($cmd -match '-D\s+([^\s"]+)')  { $data = $Matches[1] }
-        else { throw 'data dir not found' }
+        else { throw 'data directory not found in service command' }
 
         if (-not (Test-Path $data)) {
           & "$pgCtl" initdb -D "$data"
@@ -131,7 +137,7 @@ jobs:
           Restart-Service $svc.Name -Force
         }
 
-    # 4½ ── ensure role & DB once
+    # 4½ ── ensure role & DB exist
     - name: Ensure DB & role exist
       run: |
         $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
@@ -168,7 +174,7 @@ jobs:
         Set-Location $proj
         python manage.py migrate --noinput
 
-    # 6 ── warm-up
+    # 6 ── warm-up request so first hit is fast
     - name: Warm-up request
       run: |
         Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
