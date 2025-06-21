@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'    # IIS site folder
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'    # IIS folder
 
 jobs:
   deploy:
@@ -22,7 +22,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # 0½ ── derive host & export env-vars (PowerShell-5 safe)
+    # 0½ ── derive host (PowerShell-5 safe, no $Host clash)
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
@@ -38,12 +38,12 @@ jobs:
           if ($cfg.websitedomain) { $domain = $cfg.websitedomain }
         }
 
-        $host = "$siteName$domain"
-        "WARMUP_URL=https://$host/"                | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_ALLOWED_HOSTS=$host,www.$host"     | Out-File $Env:GITHUB_ENV -Append
-        "SITE_NAME=$siteName"                      | Out-File $Env:GITHUB_ENV -Append
+        $siteHost = "$siteName$domain"                    # ← renamed
+        "WARMUP_URL=https://$siteHost/"                   | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"    | Out-File $Env:GITHUB_ENV -Append
+        "SITE_NAME=$siteName"                             | Out-File $Env:GITHUB_ENV -Append
 
-    # 1 ── configure Git for IIS tree
+    # 1 ── configure Git
     - name: Configure Git
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -60,7 +60,7 @@ jobs:
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # 2 ── Python setup & install deps
+    # 2 ── Python & install deps
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -103,7 +103,7 @@ jobs:
           Restart-Service $svc.Name -Force
         }
 
-    # 4½ ── ensure role & DB once (unchanged, PowerShell-5 safe)
+    # 4½ ── ensure role & DB (unchanged, PowerShell-5 safe)
     - name: Ensure DB & role exist
       run: |
         $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
@@ -112,10 +112,10 @@ jobs:
         if ($Env:POSTGRES_DB)   { $db   = $Env:POSTGRES_DB }   else { $db   = $Env:SITE_NAME }
         if ($Env:POSTGRES_USER) { $user = $Env:POSTGRES_USER } else { $user = $Env:SITE_NAME }
 
-        $sup  = $Env:POSTGRES_SUPERUSER
-        $svc  = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
-                Sort-Object Name -Descending | Select-Object -First 1
-        $bin  = ''
+        $sup = $Env:POSTGRES_SUPERUSER
+        $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
+               Sort-Object Name -Descending | Select-Object -First 1
+        $bin = ''
         if ($svc.PathName -match '"([^"]+\\)pg_ctl\.exe"')      { $bin = $Matches[1] }
         elseif ($svc.PathName -match '([^\s"]+\\)pg_ctl\.exe')  { $bin = $Matches[1] }
 
