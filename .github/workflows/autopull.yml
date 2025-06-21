@@ -12,6 +12,7 @@ concurrency:
 # ─── EDIT PER SERVER ────────────────────────────────────────────────
 env:
   SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'        # IIS site folder
+  PY_EXE:   'C:\\Python311\\python.exe'               # system Python IIS runs
 # ───────────────────────────────────────────────────────────────────
 
 jobs:
@@ -25,28 +26,27 @@ jobs:
     # 0 ── check out code
     - uses: actions/checkout@v4
 
-    # 0½ ── derive host & export env-vars (PowerShell-5 safe, no $Host clash)
+    # 0½ ── derive host & export env-vars
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
         $cfg     = @{}
-        if (Test-Path $cfgPath) {
-          $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json
-        }
+        if (Test-Path $cfgPath) { $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json }
 
         $siteName = Split-Path -Leaf $Env:SITE_PATH
-
-        $domain = '.com'
+        $domain   = '.com'
         if ($cfg -ne $null -and $cfg.PSObject.Properties['websitedomain'] -and $cfg.websitedomain) {
           $domain = $cfg.websitedomain
         }
 
-        $siteHost = "$siteName$domain"
+        $siteHost   = "$siteName$domain"
+        $adminHost  = "admin.$siteHost"
+        $apiHost    = "api.$siteHost"
 
-        "WARMUP_URL=https://$siteHost/"                    | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"     | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_CSRF_TRUSTED=https://$siteHost"            | Out-File $Env:GITHUB_ENV -Append   # ← new line
-        "SITE_NAME=$siteName"                              | Out-File $Env:GITHUB_ENV -Append
+        "WARMUP_URL=https://$siteHost/"                                | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost,$adminHost,$apiHost" | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_CSRF_TRUSTED=https://$siteHost,https://$adminHost,https://$apiHost" | Out-File $Env:GITHUB_ENV -Append
+        "SITE_NAME=$siteName"                                          | Out-File $Env:GITHUB_ENV -Append
 
     # 1 ── Git for IIS tree
     - name: Configure Git
@@ -76,6 +76,29 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install -r "${{ github.workspace }}\backend\requirements.txt"
+
+    # 2½ ── ensure wfastcgi is present & registered (idempotent)
+    - name: Ensure wfastcgi global install
+      run: |
+        $py   = $Env:PY_EXE
+        $pip  = "$py -m pip"
+        $fcgi = [System.IO.Path]::Combine((Split-Path $py), 'Scripts', 'wfastcgi.py')
+
+        # install package if missing
+        & $pip show wfastcgi 2>$null
+        if ($LASTEXITCODE -ne 0) { & $pip install wfastcgi }
+
+        # add FastCGI mapping if absent
+        $cfg = & "$env:windir\system32\inetsrv\appcmd.exe" list config `
+                  /section:system.webServer/fastCgi
+        if ($cfg -notmatch [regex]::Escape($fcgi)) {
+          & "$env:windir\system32\inetsrv\appcmd.exe" set config `
+              /section:system.webServer/fastCgi `
+              "/+[fullPath='$py',arguments='|$fcgi']"
+          Write-Host "wfastcgi mapping added"
+        } else {
+          Write-Host "wfastcgi mapping already exists"
+        }
 
     # 3 ── restart IIS
     - name: Restart IIS
