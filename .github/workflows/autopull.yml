@@ -9,10 +9,10 @@ concurrency:
   group: site-deploy-${{ github.ref }}
   cancel-in-progress: true
 
-# ─── EDIT PER SERVER ────────────────────────────────────────────────
+# ─── EDIT PER SERVER ───────────────────────────────────────────────
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'       # IIS repo root
-  PY_EXE:   'C:\\Python313\\python.exe'              # system Python IIS runs
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # repo root served by IIS
+  PY_EXE:   'C:\\Python313\\python.exe'          # system Python IIS runs
 # ───────────────────────────────────────────────────────────────────
 
 jobs:
@@ -23,10 +23,10 @@ jobs:
         shell: powershell
 
     steps:
-    # ── 0. Checkout ----------------------------------------------------------------
+    # ── 0  Checkout ────────────────────────────────────────────────
     - uses: actions/checkout@v4
 
-    # ── 0½. Build host-name env-vars (no ternaries) --------------------------------
+    # ── 0½ Build host-name env-vars (PowerShell-5 safe) ───────────
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
@@ -39,16 +39,16 @@ jobs:
           $dom = $cfg.websitedomain
         }
 
-        $root  = "$site$dom"
-        $admin = "admin.$root"
-        $api   = "api.$root"
+        $root   = "$site$dom"
+        $admin  = "admin.$root"
+        $api    = "api.$root"
 
         "WARMUP_URL=https://$root/"                                     | Out-File $Env:GITHUB_ENV -Append
         "DJANGO_ALLOWED_HOSTS=$root,www.$root,$admin,$api"              | Out-File $Env:GITHUB_ENV -Append
         "DJANGO_CSRF_TRUSTED=https://$root,https://$admin,https://$api" | Out-File $Env:GITHUB_ENV -Append
         "SITE_NAME=$site"                                               | Out-File $Env:GITHUB_ENV -Append
 
-    # ── 1. Git fast-forward IIS folder -----------------------------------------------
+    # ── 1  Git fast-forward IIS folder ─────────────────────────────
     - name: Configure Git
       run: |
         git config --global --add safe.directory $Env:SITE_PATH
@@ -65,7 +65,7 @@ jobs:
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
 
-    # ── 2. Python & requirements -----------------------------------------------------
+    # ── 2  Python & requirements ───────────────────────────────────
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -77,10 +77,10 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -r "${{ github.workspace }}\backend\requirements.txt"
 
-    # ── 2½. Ensure wfastcgi present & mapped (duplicate-safe) ------------------------
+    # ── 2½ Ensure wfastcgi present & mapped (duplicate-safe) ───────
     - name: Ensure wfastcgi global install
       run: |
-        # locate system Python
+        # locate Python
         if (Test-Path $Env:PY_EXE) {
           $py = $Env:PY_EXE
         } else {
@@ -88,19 +88,17 @@ jobs:
           Write-Host "PY_EXE not found, using $py"
         }
 
-        # install/upgrade wfastcgi
+        # install/upgrade package
         & $py -m pip install --quiet --upgrade wfastcgi
 
-        # add FastCGI mapping only if missing
+        # add FastCGI mapping if missing
         $fcgi      = Join-Path (Split-Path $py) 'Scripts\wfastcgi.py'
         $cfg       = & "$env:SystemRoot\System32\inetsrv\appcmd.exe" list config `
                         /section:system.webServer/fastCgi /text:* 2>$null
         $havePy  = $cfg -match [regex]::Escape($py)
         $haveFcg = $cfg -match [regex]::Escape($fcgi)
 
-        if ($havePy -and $haveFcg) {
-          Write-Host "FastCGI mapping already exists"
-        } else {
+        if (-not ($havePy -and $haveFcg)) {
           Write-Host "Adding FastCGI mapping for wfastcgi..."
           try {
             & "$env:SystemRoot\System32\inetsrv\appcmd.exe" set config `
@@ -108,21 +106,23 @@ jobs:
                 "/+[fullPath='$py',arguments='|$fcgi']" -ErrorAction Stop
           } catch {
             if ($_.Exception.Message -like '*duplicate collection entry*') {
-              Write-Host "Mapping appeared concurrently; ignoring."
+              Write-Host "Mapping already added elsewhere; ignoring."
             } else { throw }
           }
+        } else {
+          Write-Host "FastCGI mapping already exists"
         }
 
-    # ── 3. Restart IIS ---------------------------------------------------------------
+    # ── 3  Restart IIS ─────────────────────────────────────────────
     - name: Restart IIS
       run: |
         iisreset /stop
         iisreset /start
 
-    # ── 4. Ensure PostgreSQL service/cluster ----------------------------------------
+    # ── 4  PostgreSQL cluster / service ────────────────────────────
     - name: Ensure & (re)start PostgreSQL
       run: |
-        $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
+        $svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -like 'postgresql*' } |
                Sort-Object Name -Descending | Select-Object -First 1
         if (-not $svc) { throw 'PostgreSQL service not found' }
 
@@ -144,33 +144,45 @@ jobs:
           Restart-Service $svc.Name -Force
         }
 
-    # ── 4½. Ensure role & DB ---------------------------------------------------------
+    # ── 4½ Ensure DB & role (no ternaries) ─────────────────────────
     - name: Ensure DB & role exist
       run: |
         $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
         echo "::add-mask::$Env:PGPASSWORD"
 
-        $db   = $Env:POSTGRES_DB   ? $Env:POSTGRES_DB   : $Env:SITE_NAME
-        $user = $Env:POSTGRES_USER ? $Env:POSTGRES_USER : $Env:SITE_NAME
-        $sup  = $Env:POSTGRES_SUPERUSER
+        # pick names
+        $db = $Env:POSTGRES_DB
+        if (-not $db) { $db = $Env:SITE_NAME }
 
-        $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
+        $user = $Env:POSTGRES_USER
+        if (-not $user) { $user = $Env:SITE_NAME }
+
+        $sup = $Env:POSTGRES_SUPERUSER
+
+        # locate psql.exe
+        $svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -like 'postgresql*' } |
                Sort-Object Name -Descending | Select-Object -First 1
         $bin = ''
         if ($svc.PathName -match '"([^"]+\\)pg_ctl\.exe"')      { $bin = $Matches[1] }
         elseif ($svc.PathName -match '([^\s"]+\\)pg_ctl\.exe')  { $bin = $Matches[1] }
 
-        $psql = (Test-Path "$bin\psql.exe") ? "$bin\psql.exe" : 'psql'
+        $psql = 'psql'
+        if ($bin) {
+          $candidate = "$bin\psql.exe"
+          if (Test-Path $candidate) { $psql = $candidate }
+        }
 
+        # role
         if (-not (& "$psql" -U $sup -tAc "SELECT 1 FROM pg_roles WHERE rolname='$user'")) {
           & "$psql" -U $sup -c "CREATE USER $user WITH PASSWORD '$Env:POSTGRES_PASSWORD';"
         }
 
+        # database
         if (-not (& "$psql" -U $sup -tAc "SELECT 1 FROM pg_database WHERE datname='$db'")) {
           & "$psql" -U $sup -c "CREATE DATABASE $db OWNER $user;"
         }
 
-    # ── 5. Django migrate ------------------------------------------------------------
+    # ── 5  Django migrate ──────────────────────────────────────────
     - name: Django migrate
       run: |
         $proj = Join-Path $Env:SITE_PATH 'backend'
@@ -178,7 +190,7 @@ jobs:
         Set-Location $proj
         python manage.py migrate --noinput
 
-    # ── 6. Warm-up -------------------------------------------------------------------
+    # ── 6  Warm-up request ─────────────────────────────────────────
     - name: Warm-up request
       run: |
         Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
