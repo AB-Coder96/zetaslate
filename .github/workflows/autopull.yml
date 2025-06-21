@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # IIS site folder
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'     # IIS site folder
 
 jobs:
   deploy:
@@ -20,23 +20,33 @@ jobs:
         shell: powershell
 
     steps:
-    # 0 ── checkout
+    # 0 ── checkout repo
     - uses: actions/checkout@v4
 
-    # 0½ ── derive host & env-vars (PowerShell-5, no reserved vars)
+    # 0½ ── derive host & export env-vars (PowerShell-5 safe)
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
-        $cfg     = Test-Path $cfgPath ? (Get-Content -Raw $cfgPath | ConvertFrom-Json) : @{}
+        $cfg     = @{}
+        if (Test-Path $cfgPath) {
+          $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json
+        }
 
-        $siteName = Split-Path -Leaf $Env:SITE_PATH
-        $domain   = ($cfg.websitedomain ? $cfg.websitedomain : '.com')
-        $siteHost = "$siteName$domain"
+        $siteName = Split-Path -Leaf $Env:SITE_PATH            # zetaslate
+
+        $domain = '.com'
+        if ($cfg -ne $null) {
+          if ($cfg.PSObject.Properties['websitedomain'] -and $cfg.websitedomain) {
+            $domain = $cfg.websitedomain
+          }
+        }
+
+        $siteHost = "$siteName$domain"                         # zetaslate.com
         $warmUrl  = "https://$siteHost/"
 
-        "WARMUP_URL=$warmUrl"                            | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"   | Out-File $Env:GITHUB_ENV -Append
-        "SITE_NAME=$siteName"                            | Out-File $Env:GITHUB_ENV -Append
+        "WARMUP_URL=$warmUrl"                                | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$siteHost,www.$siteHost"       | Out-File $Env:GITHUB_ENV -Append
+        "SITE_NAME=$siteName"                                | Out-File $Env:GITHUB_ENV -Append
 
     # 1 ── configure Git for IIS folder
     - name: Configure Git
@@ -74,24 +84,25 @@ jobs:
         iisreset /stop
         iisreset /start
 
-    # 5 ── ensure PostgreSQL cluster/service (token-based parsing)
+    # 5 ── ensure PostgreSQL cluster/service (token parsing, no regex pitfalls)
     - name: Ensure & (re)start PostgreSQL
       run: |
-        $svc = Get-WmiObject Win32_Service | ? { $_.Name -like 'postgresql*' } |
+        $svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -like 'postgresql*' } |
                Sort-Object Name -Descending | Select-Object -First 1
         if (-not $svc) { throw 'PostgreSQL service not found' }
 
+        $cmd = $svc.PathName
         Write-Host  "Service name : $($svc.Name)"
-        Write-Host  "Image path   : $($svc.PathName)"
+        Write-Host  "Image path   : $cmd"
 
-        # ---- tokenise the command line -------------------------------------
-        $tokens = ($svc.PathName -split '\s+').Trim('"')
-        $pgCtl  = ($tokens | ? { $_ -match 'pg_ctl\.exe$' } | Select-Object -First 1)
-        if (-not $pgCtl) { throw 'pg_ctl.exe not found in service command' }
+        # tokenise command line
+        $tokens = ($cmd -split '\s+') | ForEach-Object { $_.Trim('"') }
+        $pgCtl  = ($tokens | Where-Object { $_ -match 'pg_ctl\.exe$' } | Select-Object -First 1)
+        if (-not $pgCtl) { throw 'pg_ctl.exe not found in command line' }
 
         $dIdx = $tokens.IndexOf('-D')
         if ($dIdx -lt 0 -or $dIdx + 1 -ge $tokens.Count) {
-          throw 'Data directory (-D) not specified in service command'
+          throw '-D <data dir> not found in command line'
         }
         $data = $tokens[$dIdx + 1]
 
@@ -99,7 +110,7 @@ jobs:
         Write-Host "Data dir      : $data"
 
         if (-not (Test-Path $data)) {
-          Write-Host 'Data dir missing – initialising cluster …'
+          Write-Host 'Initialising PostgreSQL cluster …'
           & $pgCtl initdb -D $data
           & $pgCtl register -N $svc.Name -D $data -U 'NT AUTHORITY\NetworkService'
           Set-Service $svc.Name -StartupType Automatic
@@ -108,7 +119,7 @@ jobs:
           Restart-Service $svc.Name -Force
         }
 
-    # 5¾ ── create role & DB once (defaults to site name)
+    # 5¾ ── create role & DB on first run
     - name: Ensure DB & role exist
       run: |
         $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
