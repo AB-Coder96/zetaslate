@@ -23,10 +23,10 @@ jobs:
         shell: powershell
 
     steps:
-    # 0 ── check out repo
+    # 0 ── check out code
     - uses: actions/checkout@v4
 
-    # 0½ ── build env-vars for Django (PowerShell-5 safe)
+    # 0½ ── derive host names and export env-vars
     - name: Load project config
       run: |
         $cfgPath = "${{ github.workspace }}\project-config.json"
@@ -60,7 +60,7 @@ jobs:
         git config --global user.name  "${{ github.actor }} (GitHub Actions)"
         git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
-    - name: Pull latest commit into IIS folder
+    - name: Pull site code
       run: |
         git -C $Env:SITE_PATH fetch --all --prune
         git -C $Env:SITE_PATH reset --hard origin/main
@@ -77,36 +77,32 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -r "${{ github.workspace }}\backend\requirements.txt"
 
-    # 2½ ── ensure wfastcgi is present and mapped (idempotent)
+    # 2½ ── ensure wfastcgi is installed & mapped (idempotent)
     - name: Ensure wfastcgi global install
       run: |
-        # --- choose Python executable IIS should launch -------------------
+        # locate a writable system Python
         $py = $Env:PY_EXE
         if (-not (Test-Path $py)) {
           $py = (Get-Command python.exe).Source
           Write-Host "PY_EXE not found, using $py"
         }
 
-        # --- install wfastcgi package if missing --------------------------
-        & $py -m pip show wfastcgi *> $null
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "Installing wfastcgi package globally..."
-          & $py -m pip install wfastcgi
-        }
+        # always (re)install wfastcgi quietly; idempotent
+        & $py -m pip install --quiet --upgrade wfastcgi
 
-        # --- register FastCGI mapping if absent ---------------------------
-        $fcgi = [System.IO.Path]::Combine((Split-Path $py), 'Scripts', 'wfastcgi.py')
-        $cfg  = & "$env:windir\system32\inetsrv\appcmd.exe" list config /section:system.webServer/fastCgi
+        # register FastCGI mapping if absent
+        $fcgi = Join-Path (Split-Path $py) 'Scripts\wfastcgi.py'
+        $cfg  = & "$env:windir\System32\inetsrv\appcmd.exe" list config /section:system.webServer/fastCgi
         if ($cfg -notmatch [regex]::Escape($fcgi)) {
           Write-Host "Adding FastCGI mapping for wfastcgi..."
-          & "$env:windir\system32\inetsrv\appcmd.exe" set config `
+          & "$env:windir\System32\inetsrv\appcmd.exe" set config `
               /section:system.webServer/fastCgi `
               "/+[fullPath='$py',arguments='|$fcgi']"
         } else {
           Write-Host "FastCGI mapping already exists"
         }
 
-    # 3 ── restart IIS so new modules/bindings load
+    # 3 ── restart IIS
     - name: Restart IIS
       run: |
         iisreset /stop
@@ -137,7 +133,7 @@ jobs:
           Restart-Service $svc.Name -Force
         }
 
-    # 4½ ── ensure role & DB exist
+    # 4½ ── ensure app role & DB exist
     - name: Ensure DB & role exist
       run: |
         $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
@@ -174,7 +170,7 @@ jobs:
         Set-Location $proj
         python manage.py migrate --noinput
 
-    # 6 ── warm-up request so first hit is fast
+    # 6 ── warm-up request so first user hit is fast
     - name: Warm-up request
       run: |
         Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
