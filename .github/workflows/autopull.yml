@@ -77,6 +77,11 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -r "${{ github.workspace }}\backend\requirements.txt"
 
+    - name: Install requirements for IIS
+      run: |
+        & $Env:PY_EXE -m pip install --upgrade -r "${{ github.workspace }}\backend\requirements.txt"
+
+        
     # ── 2½ Ensure wfastcgi present & mapped (duplicate-safe) ───────
     - name: Ensure wfastcgi global install
       run: |
