@@ -124,6 +124,54 @@ jobs:
         } else {
           Write-Host "FastCGI mapping already correct"
         }
+    # ── 2¾  Install URL-Rewrite if missing ──────────────────────────
+    - name: Ensure IIS URL-Rewrite module
+      run: |
+        Import-Module WebAdministration
+        if (-not (Get-WebGlobalModule -Name 'RewriteModule' -ErrorAction SilentlyContinue)) {
+          Write-Host "URL-Rewrite not found – installing…"
+          $msi = "$env:TEMP\rewrite.msi"
+          Invoke-WebRequest `
+              -Uri "https://download.microsoft.com/download/D/5/1/D5149994-9C36-4039-A20F-1E0DAFA94230/rewrite_amd64.msi" `
+              -OutFile $msi
+          Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
+          Remove-Item $msi
+        } else {
+          Write-Host "URL-Rewrite already installed."
+        }
+
+    # ── 2⅞  Self-heal FastCGI + PythonHandler for backend site ──────
+    - name: Ensure FastCGI ➜ Python 3.12 and handler for site
+      run: |
+        $appcmd   = "$env:SystemRoot\System32\inetsrv\appcmd.exe"
+        $siteName = "zetaslate-backend"
+        $py       = $Env:PY_EXE
+        $fcgi     = Join-Path (Split-Path $py) 'Scripts\wfastcgi.py'
+
+        # A) keep only one FastCGI mapping (remove 3.13, add 3.12)
+        & $appcmd set config /section:system.webServer/fastCgi "/-[fullPath='C:\\Python313\\python.exe']" 2>$null
+        & $appcmd set config /section:system.webServer/fastCgi "/+[fullPath='$py',arguments='|$fcgi']"    2>$null
+
+        # B) unlock <handlers> just for this site (global is Deny)
+        & $appcmd unlock config "$siteName" /section:system.webServer/handlers
+
+        # C) refresh PythonHandler so every URL hits wfastcgi/Django
+        & $appcmd set config "$siteName" /section:system.webServer/handlers "/-[name='PythonHandler']" 2>$null
+        & $appcmd set config "$siteName" /section:system.webServer/handlers `
+            "/+[name='PythonHandler',path='*',verb='*',modules='FastCgiModule',scriptProcessor='$py|$fcgi',resourceType='Unspecified',requireAccess='Script']"
+
+    # ── 2⅞½ One-time scrub of rogue <location … system.web> ─────────
+    - name: Remove stray <location … system.web> (if present)
+      run: |
+        $cfgPath = "$env:SystemRoot\System32\inetsrv\config\applicationHost.config"
+        $content = Get-Content $cfgPath -Raw
+        if ($content -match '<location path="" overrideMode="Allow">\s*<system\.web>') {
+          Write-Host "Deleting rogue <location> block from applicationHost.config"
+          $clean = $content -replace '<location path="" overrideMode="Allow">.*?</location>\s*$', ''
+          $clean | Set-Content $cfgPath -Encoding UTF8
+        } else {
+          Write-Host "No rogue <location> block found."
+        }
 
     # ── ensure log folder exists and is writable ──────────────────────
     - name: Ensure Django log directory
