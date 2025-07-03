@@ -108,7 +108,8 @@ jobs:
           try {
             & "$env:SystemRoot\System32\inetsrv\appcmd.exe" set config `
                 /section:system.webServer/fastCgi `
-                "/+[fullPath='$py',arguments='|$fcgi']" -ErrorAction Stop
+                "/+[fullPath='$py',arguments='|$fcgi']"
+
           } catch {
             if ($_.Exception.Message -like '*duplicate collection entry*') {
               Write-Host "Mapping already added elsewhere; ignoring."
