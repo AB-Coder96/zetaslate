@@ -128,14 +128,18 @@ jobs:
     - name: Ensure IIS URL-Rewrite module
       run: |
         Import-Module WebAdministration
-        if (-not (Get-WebGlobalModule -Name RewriteModule -ErrorAction SilentlyContinue)) {
-          Write-Host "URL-Rewrite not found – installing..."
-          $msi = Join-Path $env:TEMP rewrite.msi
-          Invoke-WebRequest -Uri https://download.microsoft.com/download/D/5/1/D5149994-9C36-4039-A20F-1E0DAFA94230/rewrite_amd64.msi -OutFile $msi
+
+        if (-not (Get-WebGlobalModule -Name 'RewriteModule' -ErrorAction SilentlyContinue)) {
+          Write-Host 'URL-Rewrite not found – installing...'
+
+          $msi = Join-Path $env:TEMP 'rewrite.msi'
+          Invoke-WebRequest -Uri 'https://download.microsoft.com/download/D/5/1/D5149994-9C36-4039-A20F-1E0DAFA94230/rewrite_amd64.msi' -OutFile $msi
+
           Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
           Remove-Item $msi
-        } else {
-          Write-Host "URL-Rewrite already installed."
+        }
+        else {
+          Write-Host 'URL-Rewrite already installed.'
         }
 
     # ── 2¾⁺  GLOBAL unlock of <handlers> (or backend\web.config stays locked) ──
