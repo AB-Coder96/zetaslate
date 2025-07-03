@@ -85,7 +85,9 @@ jobs:
     # ── 2½ Ensure wfastcgi present & mapped (duplicate-safe) ───────
     - name: Ensure wfastcgi global install
       run: |
-        # locate Python
+        ########################
+        # 1. Locate Python exe #
+        ########################
         if (Test-Path $Env:PY_EXE) {
           $py = $Env:PY_EXE
         } else {
@@ -93,31 +95,36 @@ jobs:
           Write-Host "PY_EXE not found, using $py"
         }
 
-        # install/upgrade package
+        ###############################
+        # 2. Make sure wfastcgi is in #
+        #    that interpreter's site  #
+        ###############################
         & $py -m pip install --quiet --upgrade wfastcgi
 
-        # add FastCGI mapping if missing
-        $fcgi      = Join-Path (Split-Path $py) 'Scripts\wfastcgi.py'
-        $cfg       = & "$env:SystemRoot\System32\inetsrv\appcmd.exe" list config `
-                        /section:system.webServer/fastCgi /text:* 2>$null
-        $havePy  = $cfg -match [regex]::Escape($py)
-        $haveFcg = $cfg -match [regex]::Escape($fcgi)
+        ############################################
+        # 3. Refresh FastCGI mapping — self-healing #
+        ############################################
+        $fcgi   = Join-Path (Split-Path $py) 'Scripts\wfastcgi.py'
+        $appcmd = Join-Path $env:SystemRoot 'System32\inetsrv\appcmd.exe'
 
-        if (-not ($havePy -and $haveFcg)) {
-          Write-Host "Adding FastCGI mapping for wfastcgi..."
-          try {
-            & "$env:SystemRoot\System32\inetsrv\appcmd.exe" set config `
-                /section:system.webServer/fastCgi `
-                "/+[fullPath='$py',arguments='|$fcgi']"
+        # Current FastCGI collection
+        $cfg    = & $appcmd list config /section:system.webServer/fastCgi /text:* 2>$null
+        $haveOk = ($cfg -match [regex]::Escape($py)) -and ($cfg -match [regex]::Escape($fcgi))
 
-          } catch {
-            if ($_.Exception.Message -like '*duplicate collection entry*') {
-              Write-Host "Mapping already added elsewhere; ignoring."
-            } else { throw }
-          }
+        if (-not $haveOk) {
+          Write-Host "Refreshing FastCGI mapping for wfastcgi…"
+
+          # Remove any existing entry for this interpreter (ignore error if none)
+          & $appcmd set config /section:system.webServer/fastCgi "/-[fullPath='$py']" 2>$null
+
+          # Add one clean entry
+          & $appcmd set config /section:system.webServer/fastCgi "/+[fullPath='$py',arguments='|$fcgi']"
+
+          Write-Host "FastCGI mapping refreshed for $py"
         } else {
-          Write-Host "FastCGI mapping already exists"
+          Write-Host "FastCGI mapping already correct"
         }
+
     # ── ensure log folder exists and is writable ──────────────────────
     - name: Ensure Django log directory
       run: |
