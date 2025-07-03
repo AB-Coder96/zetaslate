@@ -124,41 +124,47 @@ jobs:
         } else {
           Write-Host "FastCGI mapping already correct"
         }
-    # ── 2¾  Install URL-Rewrite if missing ──────────────────────────
+    # ── 2¾  Install URL-Rewrite if missing ─────────────────────────
     - name: Ensure IIS URL-Rewrite module
       run: |
         Import-Module WebAdministration
-        if (-not (Get-WebGlobalModule -Name 'RewriteModule' -ErrorAction SilentlyContinue)) {
-          Write-Host "URL-Rewrite not found - installing..."
-          $msi = Join-Path $env:TEMP 'rewrite.msi'
-          Invoke-WebRequest `
-              -Uri 'https://download.microsoft.com/download/D/5/1/D5149994-9C36-4039-A20F-1E0DAFA94230/rewrite_amd64.msi' `
-              -OutFile $msi
+        if (-not (Get-WebGlobalModule -Name RewriteModule -ErrorAction SilentlyContinue)) {
+          Write-Host "URL-Rewrite not found – installing..."
+          $msi = Join-Path $env:TEMP rewrite.msi
+          Invoke-WebRequest -Uri https://download.microsoft.com/download/D/5/1/D5149994-9C36-4039-A20F-1E0DAFA94230/rewrite_amd64.msi -OutFile $msi
           Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
           Remove-Item $msi
         } else {
           Write-Host "URL-Rewrite already installed."
         }
 
-    # ── 2⅞  Self-heal FastCGI + PythonHandler for backend site ──────
-    - name: Ensure FastCGI ➜ Python 3.12 and handler for site
+    # ── 2¾⁺  GLOBAL unlock of <handlers> (or backend\web.config stays locked) ──
+    - name: Unlock handlers section once
+      run: |
+        & "$env:SystemRoot\System32\inetsrv\appcmd.exe" unlock config /section:system.webServer/handlers
+
+    # ── 2⅞  Self-heal FastCGI + PythonHandler for backend site ─────
+    - name: Ensure FastCGI → Python 3.12 and handler for site
       run: |
         $appcmd   = "$env:SystemRoot\System32\inetsrv\appcmd.exe"
-        $siteName = 'zetaslate-backend'
+        $site     = 'zetaslate-backend'
         $py       = $Env:PY_EXE
-        $fcgi     = Join-Path (Split-Path $py) 'Scripts\wfastcgi.py'
+        $fcgi     = Join-Path (Split-Path $py) Scripts\wfastcgi.py
 
-        # A) keep only one FastCGI mapping (remove 3.13, add 3.12)
-        & $appcmd set config /section:system.webServer/fastCgi "/-[fullPath='C:\\Python313\\python.exe']" 2>$null
-        & $appcmd set config /section:system.webServer/fastCgi "/+[fullPath='$py',arguments='|$fcgi']"    2>$null
+        # A) one single FastCGI row, updated in-place
+        & $appcmd set config /section:system.webServer/fastCgi `
+              "/unique[fullPath='$py',arguments='|$fcgi']"
 
-        # B) unlock <handlers> just for this site (global default is Deny)
-        & $appcmd unlock config $siteName /section:system.webServer/handlers
+        # remove stale 3.13 mapping if still there (ignore error)
+        & $appcmd set config /section:system.webServer/fastCgi `
+              "/-[fullPath='C:\\Python313\\python.exe']" 2>$null
 
-        # C) refresh PythonHandler so every URL hits wfastcgi/Django
-        & $appcmd set config $siteName /section:system.webServer/handlers "/-[name='PythonHandler']" 2>$null
-        & $appcmd set config $siteName /section:system.webServer/handlers `
-            "/+[name='PythonHandler',path='*',verb='*',modules='FastCgiModule',scriptProcessor='$py|$fcgi',resourceType='Unspecified',requireAccess='Script']"
+        # B) site handler → always point to current Python
+        & $appcmd set config $site /section:system.webServer/handlers `
+              "/-[name='PythonHandler']" 2>$null
+        & $appcmd set config $site /section:system.webServer/handlers `
+              "/unique[name='PythonHandler',path='*',verb='*',modules='FastCgiModule'," `
+              + "scriptProcessor='$py|$fcgi',resourceType='Unspecified',requireAccess='Script']"
 
     # ── 2⅞½ One-time scrub of rogue <location … system.web> ─────────
     - name: Remove stray <location … system.web> (if present)
