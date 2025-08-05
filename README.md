@@ -1,3 +1,3 @@
 # zetaslate
-TEST PUSH12
+refresh
 run venv var gen adminstrator
