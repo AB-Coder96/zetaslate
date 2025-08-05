@@ -81,7 +81,6 @@ jobs:
       run: |
         & $Env:PY_EXE -m pip install --upgrade -r "${{ github.workspace }}\backend\requirements.txt"
 
-        
     # ── 2½ Ensure wfastcgi present & mapped (duplicate-safe) ───────
     - name: Ensure wfastcgi global install
       run: |
@@ -124,7 +123,20 @@ jobs:
         } else {
           Write-Host "FastCGI mapping already correct"
         }
-    # ── 2¾  Install URL-Rewrite if missing ─────────────────────────
+      # ── 2¾  Install CGI-IIS if missing ─────────────────────────
+    - name: Ensure IIS + CGI feature
+      run: |
+              $isServer = ((Get-CimInstance Win32_OperatingSystem).ProductType -ne 1)
+              if ($isServer) {
+                Import-Module ServerManager
+                Install-WindowsFeature Web-Server,Web-CGI -IncludeManagementTools
+              } else {
+                dism /online /Enable-Feature /FeatureName:IIS-WebServerRole /All /NoRestart
+                dism /online /Enable-Feature /FeatureName:IIS-CGI /All /NoRestart
+              }
+              iisreset
+
+        # ── 2¾  Install URL-Rewrite if missing ─────────────────────────
     - name: Ensure IIS URL-Rewrite module
       run: |
         Import-Module WebAdministration
