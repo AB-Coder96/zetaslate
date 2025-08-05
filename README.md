@@ -1,3 +1,3 @@
 # zetaslate
-refresh
+refreshcc
 run venv var gen adminstrator
