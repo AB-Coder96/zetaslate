@@ -50,6 +50,8 @@ ALLOWED_HOSTS = [
     f"www.{SITE_NAME}.com",
     f"admin.{SITE_NAME}.com",
     f"api.{SITE_NAME}.com",
+    "localhost",
+    "127.0.0.1",
 ]
 
 # CSRF - explicitly including all needed origins
