@@ -146,13 +146,8 @@ jobs:
         $projDir = Join-Path $Env:SITE_PATH 'backend'
         Set-Location $projDir
 
-        # Waitress command to start the server and write its PID to a file
-        & $Env:PY_EXE -m waitress `
-          --host=$Env:WAITRESS_HOST `
-          --port=$Env:WAITRESS_PORT `
-          --pid-file=waitress.pid `
-          --daemon `
-          'backend.wsgi:application'
+        
+          Start-Process -FilePath "$Env:PY_EXE" -ArgumentList "-m", "waitress", "--host=$Env:WAITRESS_HOST", "--port=$Env:WAITRESS_PORT", "backend.wsgi:application" -NoNewWindow
 
     # ── 3  Restart IIS ─────────────────────────────────────────────
     - name: Restart IIS
