@@ -225,7 +225,12 @@ jobs:
         if (-not (Test-Path "$proj\manage.py")) { throw "manage.py not found at $proj" }
         Set-Location $proj
         python manage.py migrate --noinput
-
+    # ── 5½  Django collectstatic ──────────────────────────────────
+    - name: Collect static files
+      run: |
+        $proj = Join-Path $Env:SITE_PATH 'backend'
+        Set-Location $proj
+        python manage.py collectstatic --noinput
     # ── 6  Warm-up request ─────────────────────────────────────────
     - name: Warm-up request
       run: |
