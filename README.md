@@ -1,3 +1,3 @@
 # zetaslate
-refreshcccvcdv
+nssm required for waitress
 run venv var gen adminstrator
