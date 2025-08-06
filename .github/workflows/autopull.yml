@@ -122,9 +122,9 @@ jobs:
       run: |
         $projDir = Join-Path $Env:SITE_PATH 'backend'
         Set-Location $projDir
-
-        # Start Waitress as a background process
-        net start zetaslate-waitress
+        # Restart the Windows Service to load the new code
+        Restart-Service -Name zetaslate-waitress -Force
+        Write-Host "Waitress service restarted to load new code."
     # ── 3  Restart IIS ─────────────────────────────────────────────
     - name: Restart IIS
       run: |
