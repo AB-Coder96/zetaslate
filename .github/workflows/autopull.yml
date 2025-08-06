@@ -124,8 +124,10 @@ jobs:
         Set-Location $projDir
 
         # Start Waitress as a background process
-        Start-Process -FilePath "$Env:PY_EXE" -ArgumentList "-m", "waitress", "--host=$Env:WAITRESS_HOST", "--port=$Env:WAITRESS_PORT", "backend.wsgi:application" -NoNewWindow
-
+        Start-Job -ScriptBlock {
+        & "$Env:PY_EXE" -m waitress "--host=127.0.0.1" "--port=8000" "backend.wsgi:application"
+        } | Out-Null
+        Start-Sleep -Seconds 5
     # ── 3  Restart IIS ─────────────────────────────────────────────
     - name: Restart IIS
       run: |
