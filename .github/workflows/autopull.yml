@@ -11,8 +11,11 @@ concurrency:
 
 # ─── EDIT PER SERVER ───────────────────────────────────────────────
 env:
-  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'   # repo root served by IIS
-  PY_EXE:   'C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe'          # system Python IIS runs
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'      # repo root served by IIS
+  PY_EXE:    'C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe'       # system Python IIS runs
+  # The host and port for Waitress
+  WAITRESS_HOST: '127.0.0.1'
+  WAITRESS_PORT: '8000'
 # ───────────────────────────────────────────────────────────────────
 
 jobs:
@@ -43,10 +46,10 @@ jobs:
         $admin  = "admin.$root"
         $api    = "api.$root"
 
-        "WARMUP_URL=https://$root/"                                     | Out-File $Env:GITHUB_ENV -Append
-        "DJANGO_ALLOWED_HOSTS=$root,www.$root,$admin,$api"              | Out-File $Env:GITHUB_ENV -Append
+        "WARMUP_URL=https://$root/"                                 | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$root,www.$root,$admin,$api,$Env:WAITRESS_HOST" | Out-File $Env:GITHUB_ENV -Append
         "DJANGO_CSRF_TRUSTED=https://$root,https://$admin,https://$api" | Out-File $Env:GITHUB_ENV -Append
-        "SITE_NAME=$site"                                               | Out-File $Env:GITHUB_ENV -Append
+        "SITE_NAME=$site"                                             | Out-File $Env:GITHUB_ENV -Append
 
     # ── 1  Git fast-forward IIS folder ─────────────────────────────
     - name: Configure Git
@@ -72,143 +75,84 @@ jobs:
         cache: pip
         cache-dependency-path: backend/requirements.txt
 
-    - name: Install requirements
+    - name: Install requirements (including Waitress)
       run: |
         python -m pip install --upgrade pip
         python -m pip install -r "${{ github.workspace }}\backend\requirements.txt"
+        & $Env:PY_EXE -m pip install waitress
 
-    - name: Install requirements for IIS
-      run: |
-        & $Env:PY_EXE -m pip install --upgrade -r "${{ github.workspace }}\backend\requirements.txt"
-
-    # ── 2½ Ensure wfastcgi present & mapped (duplicate-safe) ───────
-    - name: Ensure wfastcgi global install
-      run: |
-        ########################
-        # 1. Locate Python exe #
-        ########################
-        if (Test-Path $Env:PY_EXE) {
-          $py = $Env:PY_EXE
-        } else {
-          $py = (Get-Command python.exe).Source
-          Write-Host "PY_EXE not found, using $py"
-        }
-
-        ###############################
-        # 2. Make sure wfastcgi is in #
-        #    that interpreter's site  #
-        ###############################
-        & $py -m pip install --quiet --upgrade wfastcgi
-
-        ############################################
-        # 3. Refresh FastCGI mapping — self-healing #
-        ############################################
-        $fcgi   = Join-Path (Split-Path $py) 'Scripts\wfastcgi.py'
-        $appcmd = Join-Path $env:SystemRoot 'System32\inetsrv\appcmd.exe'
-
-        # Current FastCGI collection
-        $cfg    = & $appcmd list config /section:system.webServer/fastCgi /text:* 2>$null
-        $haveOk = ($cfg -match [regex]::Escape($py)) -and ($cfg -match [regex]::Escape($fcgi))
-
-        if (-not $haveOk) {
-          Write-Host "Refreshing FastCGI mapping for wfastcgi…"
-
-          # Remove any existing entry for this interpreter (ignore error if none)
-          & $appcmd set config /section:system.webServer/fastCgi "/-[fullPath='$py']" 2>$null
-
-          # Add one clean entry
-          & $appcmd set config /section:system.webServer/fastCgi "/+[fullPath='$py',arguments='|$fcgi']"
-
-          Write-Host "FastCGI mapping refreshed for $py"
-        } else {
-          Write-Host "FastCGI mapping already correct"
-        }
-      # ── 2¾  Install CGI-IIS if missing ─────────────────────────
-    - name: Ensure IIS + CGI feature
-      run: |
-              $isServer = ((Get-CimInstance Win32_OperatingSystem).ProductType -ne 1)
-              if ($isServer) {
-                Import-Module ServerManager
-                Install-WindowsFeature Web-Server,Web-CGI -IncludeManagementTools
-              } else {
-                dism /online /Enable-Feature /FeatureName:IIS-WebServerRole /All /NoRestart
-                dism /online /Enable-Feature /FeatureName:IIS-CGI /All /NoRestart
-              }
-              iisreset
-
-        # ── 2¾  Install URL-Rewrite if missing ─────────────────────────
-    - name: Ensure IIS URL-Rewrite module
+    # ── 2¾  Install URL-Rewrite if missing ─────────────────────────
+    - name: Ensure IIS URL-Rewrite module and Application Request Routing (ARR)
       run: |
         Import-Module WebAdministration
 
+        # Check for URL-Rewrite module
         if (-not (Get-WebGlobalModule -Name 'RewriteModule' -ErrorAction SilentlyContinue)) {
           Write-Host 'URL-Rewrite not found – installing...'
-
           $msi = Join-Path $env:TEMP 'rewrite.msi'
           Invoke-WebRequest -Uri 'https://download.microsoft.com/download/D/5/1/D5149994-9C36-4039-A20F-1E0DAFA94230/rewrite_amd64.msi' -OutFile $msi
-
           Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
           Remove-Item $msi
-        }
-        else {
+        } else {
           Write-Host 'URL-Rewrite already installed.'
         }
+        
+        # NOTE: For reverse proxying, you also need the ARR module.
+        # This script assumes it's already installed. If not, you'll need to add
+        # a similar install step for it.
 
-    # ── 2¾⁺  GLOBAL unlock of <handlers> (or backend\web.config stays locked) ──
-    - name: Unlock handlers section once
+    # ── 2⅞½  Configure IIS for Reverse Proxy ─────────────────────────
+    - name: Stop any existing Waitress server and create web.config for reverse proxy
       run: |
-        & "$env:SystemRoot\System32\inetsrv\appcmd.exe" unlock config /section:system.webServer/handlers
-
-    - name: Ensure FastCGI ➜ Python 3.12 and handler for site
-      run: |
-        $appcmd   = "$env:SystemRoot\System32\inetsrv\appcmd.exe"
-        $siteName = 'zetaslate-backend'
-        $py       = $Env:PY_EXE
-        $fcgi     = Join-Path (Split-Path $py) 'Scripts\wfastcgi.py'
-
-        # A) remove any 3.13 mapping (ignore if absent)
-        & $appcmd set config /section:system.webServer/fastCgi `
-            "/-[fullPath='C:\\Python313\\python.exe']" 2>$null
-
-        # B) add / ensure the 3.12 mapping (idempotent)
-        & $appcmd set config /section:system.webServer/fastCgi `
-            "/+[fullPath='$py',arguments='|$fcgi']"
-
-        # C) unlock <handlers> just for this site (global default is Deny)
-        & $appcmd unlock config $siteName /section:system.webServer/handlers
-
-        # D) reset PythonHandler so every URL hits wfastcgi/Django
-        & $appcmd set config $siteName /section:system.webServer/handlers `
-            "/-[name='PythonHandler']" 2>$null
-        & $appcmd set config $siteName /section:system.webServer/handlers `
-            "/+[name='PythonHandler',path='*',verb='*',modules='FastCgiModule',scriptProcessor='$py|$fcgi',resourceType='Unspecified',requireAccess='Script']"
-
-    # ── 2⅞½ One-time scrub of rogue <location … system.web> ─────────
-    - name: Remove stray <location … system.web> (if present)
-      run: |
-        $cfgPath = "$env:SystemRoot\System32\inetsrv\config\applicationHost.config"
-        $content = Get-Content $cfgPath -Raw
-        if ($content -match '<location path="" overrideMode="Allow">\s*<system\.web>') {
-          Write-Host "Deleting rogue <location> block from applicationHost.config"
-          $clean = $content -replace '<location path="" overrideMode="Allow">.*?</location>\s*$',''
-          $clean | Set-Content $cfgPath -Encoding UTF8
-        } else {
-          Write-Host "No rogue <location> block found."
+        $projDir = Join-Path $Env:SITE_PATH 'backend'
+        $pidFile = Join-Path $projDir 'waitress.pid'
+        
+        # Check if the PID file exists and kill the old process
+        if (Test-Path $pidFile) {
+          $pid = Get-Content -Path $pidFile
+          if (Get-Process -Id $pid -ErrorAction SilentlyContinue) {
+            Write-Host "Killing old Waitress process with PID $pid"
+            Stop-Process -Id $pid -Force
+          }
+          Remove-Item -Path $pidFile
         }
 
-    # ── ensure log folder exists and is writable ──────────────────────
-    - name: Ensure Django log directory
+        $webConfigContent = @"
+                  <configuration>
+        <system.webServer>
+            <rewrite>
+                <rules>
+                    <rule name="Reverse Proxy to Waitress" stopProcessing="true">
+                        <match url="(.*)" />
+                        <action type="Rewrite" url="http://localhost:${{ env.WAITRESS_PORT }}/{R:1}" />
+                        <serverVariables>
+                            <set name="HTTP_X_FORWARDED_HOST" value="{HTTP_HOST}" />
+                            <set name="HTTP_X_FORWARDED_PROTO" value="https" />
+                        </serverVariables>
+                    </rule>
+                </rules>
+            </rewrite>
+        </system.webServer>
+        </configuration>
+        "@
+
+        $webConfigPath = Join-Path $Env:SITE_PATH 'web.config'
+        $webConfigContent | Out-File -FilePath $webConfigPath -Encoding UTF8
+        Write-Host "Created web.config for reverse proxy."
+
+    # ── 2⅞⁺ Start Waitress server ───────────────────────────────────
+    - name: Start Waitress server
       run: |
-       $logDir  = 'C:\inetpub\logs\django'      # path used in WSGI_LOG
-       $appPool = 'zetaslate-backend'           # IIS app-pool name
+        $projDir = Join-Path $Env:SITE_PATH 'backend'
+        Set-Location $projDir
 
-       if (-not (Test-Path $logDir)) {
-        New-Item -Path $logDir -ItemType Directory | Out-Null
-        Write-Host "Created $logDir"
-       }
-
-       icacls $logDir /grant "IIS AppPool\${appPool}:(M)" /T /C | Out-Null
-       Write-Host "Granted Modify rights to IIS AppPool\$appPool"
+        # Waitress command to start the server and write its PID to a file
+        & $Env:PY_EXE -m waitress `
+          --host=$Env:WAITRESS_HOST `
+          --port=$Env:WAITRESS_PORT `
+          --pid-file=waitress.pid `
+          --daemon `
+          'backend.wsgi:application'
 
     # ── 3  Restart IIS ─────────────────────────────────────────────
     - name: Restart IIS
@@ -220,16 +164,16 @@ jobs:
     - name: Ensure & (re)start PostgreSQL
       run: |
         $svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -like 'postgresql*' } |
-               Sort-Object Name -Descending | Select-Object -First 1
+              Sort-Object Name -Descending | Select-Object -First 1
         if (-not $svc) { throw 'PostgreSQL service not found' }
 
         $cmd = $svc.PathName
-        if ($cmd -match '"([^"]+\\pg_ctl\.exe)"')      { $pgCtl = $Matches[1] }
-        elseif ($cmd -match '([^\s"]+\\pg_ctl\.exe)')  { $pgCtl = $Matches[1] }
+        if ($cmd -match '"([^"]+\\pg_ctl\.exe)"')        { $pgCtl = $Matches[1] }
+        elseif ($cmd -match '([^\s"]+\\pg_ctl\.exe)')    { $pgCtl = $Matches[1] }
         else { throw 'pg_ctl.exe not found in service command' }
 
-        if ($cmd -match '-D\s+"([^"]+)"')      { $data = $Matches[1] }
-        elseif ($cmd -match '-D\s+([^\s"]+)')  { $data = $Matches[1] }
+        if ($cmd -match '-D\s+"([^"]+)"')        { $data = $Matches[1] }
+        elseif ($cmd -match '-D\s+([^\s"]+)')    { $data = $Matches[1] }
         else { throw 'data directory not found in service command' }
 
         if (-not (Test-Path $data)) {
@@ -258,7 +202,7 @@ jobs:
 
         # locate psql.exe
         $svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -like 'postgresql*' } |
-               Sort-Object Name -Descending | Select-Object -First 1
+              Sort-Object Name -Descending | Select-Object -First 1
         $bin = ''
         if ($svc.PathName -match '"([^"]+\\)pg_ctl\.exe"')      { $bin = $Matches[1] }
         elseif ($svc.PathName -match '([^\s"]+\\)pg_ctl\.exe')  { $bin = $Matches[1] }
