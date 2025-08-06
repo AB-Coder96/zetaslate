@@ -1,3 +1,3 @@
 # zetaslate
-refreshcccvc
+refreshcccvcdv
 run venv var gen adminstrator
