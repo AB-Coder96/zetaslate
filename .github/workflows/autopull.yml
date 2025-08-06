@@ -102,7 +102,7 @@ jobs:
         # a similar install step for it.
 
     # ── 2⅞½  Configure IIS for Reverse Proxy ─────────────────────────
-    - name: Stop any existing Waitress server and create web.config for reverse proxy
+    - name: Stop any existing Waitress server
       run: |
         $projDir = Join-Path $Env:SITE_PATH 'backend'
         $pidFile = Join-Path $projDir 'waitress.pid'
@@ -117,37 +117,14 @@ jobs:
           Remove-Item -Path $pidFile
         }
 
-        $webConfigContent = @"
-                  <configuration>
-        <system.webServer>
-            <rewrite>
-                <rules>
-                    <rule name="Reverse Proxy to Waitress" stopProcessing="true">
-                        <match url="(.*)" />
-                        <action type="Rewrite" url="http://localhost:${{ env.WAITRESS_PORT }}/{R:1}" />
-                        <serverVariables>
-                            <set name="HTTP_X_FORWARDED_HOST" value="{HTTP_HOST}" />
-                            <set name="HTTP_X_FORWARDED_PROTO" value="https" />
-                        </serverVariables>
-                    </rule>
-                </rules>
-            </rewrite>
-        </system.webServer>
-        </configuration>
-        "@
-
-        $webConfigPath = Join-Path $Env:SITE_PATH 'web.config'
-        $webConfigContent | Out-File -FilePath $webConfigPath -Encoding UTF8
-        Write-Host "Created web.config for reverse proxy."
-
     # ── 2⅞⁺ Start Waitress server ───────────────────────────────────
     - name: Start Waitress server
       run: |
         $projDir = Join-Path $Env:SITE_PATH 'backend'
         Set-Location $projDir
 
-        
-          Start-Process -FilePath "$Env:PY_EXE" -ArgumentList "-m", "waitress", "--host=$Env:WAITRESS_HOST", "--port=$Env:WAITRESS_PORT", "backend.wsgi:application" -NoNewWindow
+        # Start Waitress as a background process
+        Start-Process -FilePath "$Env:PY_EXE" -ArgumentList "-m", "waitress", "--host=$Env:WAITRESS_HOST", "--port=$Env:WAITRESS_PORT", "backend.wsgi:application" -NoNewWindow
 
     # ── 3  Restart IIS ─────────────────────────────────────────────
     - name: Restart IIS
@@ -231,6 +208,7 @@ jobs:
         $proj = Join-Path $Env:SITE_PATH 'backend'
         Set-Location $proj
         python manage.py collectstatic --noinput
+
     # ── 6  Warm-up request ─────────────────────────────────────────
     - name: Warm-up request
       run: |
