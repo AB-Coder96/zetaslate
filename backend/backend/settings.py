@@ -82,7 +82,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "whitenoise.runserver_nostatic",
-    "django_hosts",
     "blogapi"
 ]
 
@@ -95,8 +94,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "django_hosts.middleware.HostsResponseMiddleware",
-    "django_hosts.middleware.HostsRequestMiddleware"
 ]
 
 ROOT_URLCONF = "backend.urls"
