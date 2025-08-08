@@ -57,19 +57,15 @@ ALLOWED_HOSTS = [
 
 # CSRF - explicitly including all needed origins
 # backend/settings.py  – CSRF_TRUSTED_ORIGINS
-CSRF_TRUSTED_ORIGINS = (
-    env(
-        "DJANGO_CSRF_TRUSTED",
-        default=(
-            f"https://{SITE_NAME}.com,"
-            f"https://www.{SITE_NAME}.com,"
-            f"https://admin.{SITE_NAME}.com,"
-            f"https://api.{SITE_NAME}.com"
-        ),
-    ).split(",")
-    if not DEBUG
-    else []
-)
+CSRF_TRUSTED_ORIGINS = env(
+    "DJANGO_CSRF_TRUSTED",
+    default=(
+        f"https://{SITE_NAME}.com,"
+        f"https://www.{SITE_NAME}.com,"
+        f"https://admin.{SITE_NAME}.com,"
+        f"https://api.{SITE_NAME}.com"
+    ),
+).split(",")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # apps & middleware
