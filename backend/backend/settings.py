@@ -38,8 +38,7 @@ SITE_NAME = Path(SITE_PATH).name  # e.g. zetaslate
 # core
 # ─────────────────────────────────────────────────────────────────────────────
 SECRET_KEY = env("DJANGO_SECRET_KEY", required=True)
-DEBUG =True 
-#env("DJANGO_DEBUG", "False").lower() == "true"
+DEBUG =env("DJANGO_DEBUG", "False").lower() == "true"
 
 # Update your ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS handling:
 # settings.py (updated but keeping your style)
