@@ -182,5 +182,3 @@ LOGGING = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-ROOT_HOSTCONF = 'backend.hosts'   # dotted path to hosts.py
-DEFAULT_HOST  = 'api'                     # the name you chose above
