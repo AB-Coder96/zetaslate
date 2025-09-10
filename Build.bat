@@ -4,7 +4,7 @@ pause
 call "%~dp0venv\Scripts\activate.bat"
 :: ── NEW: capture exact Python package versions
 python -m pip freeze > "backend\requirements.txt"
-
+robocopy "frontend\dist" "docs" /MIR
 git add .
 
 :: commit message = <computer-name> + <this-bat-file-name> + “automatic”
