@@ -9,9 +9,9 @@ function App() {
   return (
     <BrowserRouter>
       <Layout>
-        <header className="flex items-center justify-between p-4">
-      <Weather location="New York" variant="compact" />
-    </header>
+      <header className="p-4">
+
+      </header>
         <Routes>
           {/* Home page now renders Home + TestGrid together */}
           <Route
@@ -20,6 +20,14 @@ function App() {
               <>
                 <Home />
                 <TestGridPage />
+                        <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+          <Weather location="New York"   variant="compact" className="w-full" />
+          <Weather location="Los Angeles" variant="compact" className="w-full" />
+          <Weather location="Sarajevo"   variant="compact" className="w-full" />
+          <Weather location="London"     variant="compact" className="w-full" />
+          <Weather location="Ankara"     variant="compact" className="w-full" />
+          <Weather location="Beijing"    variant="compact" className="w-full" />
+        </div>
               </>
             }
           />
