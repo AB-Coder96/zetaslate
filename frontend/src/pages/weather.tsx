@@ -1,5 +1,5 @@
 import React from "react";
-import { useWeather, type Units } from "./api/weatherapi";
+import { useWeather, type Units } from "../api/weatherapi";
 
 export type WeatherProps = {
   /** City name OR pass coordinates */
