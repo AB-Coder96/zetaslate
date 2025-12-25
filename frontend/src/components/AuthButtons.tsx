@@ -1,5 +1,3 @@
-import React from "react";
-
 type AuthButtonsProps = {
   /**
    * Optional override for where the user should be redirected after login/logout.

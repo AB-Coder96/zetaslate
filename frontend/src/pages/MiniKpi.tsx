@@ -1,22 +1,24 @@
-// MiniKpi.tsx
+// src/pages/MiniKpi.tsx
 import * as React from "react";
 
 export type MiniKpiProps = {
   label: string;
   value: React.ReactNode;
 
-  /** Optional small helper text (e.g. "vs last week") */
+  /** Optional helper text under the value */
   sublabel?: string;
+
+  /** Alias used in your Profile.tsx */
+  note?: string;
 
   /**
    * Change indicator.
-   * - Use `delta` for % or absolute change (e.g. 12.3 or -4)
-   * - Use `deltaLabel` to add a suffix (e.g. "%", "pts", "")
+   * Example: delta={12.3} deltaLabel="%"
    */
   delta?: number;
   deltaLabel?: string;
 
-  /** Optional icon (pass <YourIcon /> from any library) */
+  /** Optional icon (pass <Icon className="h-5 w-5" /> etc) */
   icon?: React.ReactNode;
 
   /** Optional click behavior */
@@ -36,12 +38,15 @@ export function MiniKpi({
   label,
   value,
   sublabel,
+  note,
   delta,
   deltaLabel,
   icon,
   onClick,
   className,
 }: MiniKpiProps) {
+  const helperText = note ?? sublabel;
+
   const hasDelta = typeof delta === "number" && Number.isFinite(delta);
   const tone =
     !hasDelta ? "neutral" : delta > 0 ? "positive" : delta < 0 ? "negative" : "neutral";
@@ -69,6 +74,7 @@ export function MiniKpi({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <div className="truncate text-sm font-medium text-slate-700">{label}</div>
+
             {hasDelta && (
               <span
                 className={[
@@ -76,6 +82,7 @@ export function MiniKpi({
                   deltaStyles,
                 ].join(" ")}
                 aria-label={`Change ${formatDelta(delta!, deltaLabel)}`}
+                title={formatDelta(delta!, deltaLabel)}
               >
                 {formatDelta(delta!, deltaLabel)}
               </span>
@@ -86,8 +93,8 @@ export function MiniKpi({
             {value}
           </div>
 
-          {sublabel && (
-            <div className="mt-1 text-xs text-slate-500 truncate">{sublabel}</div>
+          {helperText && (
+            <div className="mt-1 text-xs text-slate-500 truncate">{helperText}</div>
           )}
         </div>
 
