@@ -4,6 +4,7 @@ import Post from "./pages/Post";
 import Weather from "./pages/weather";
 import Layout from "./components/Layout";
 import TestGridPage from "./components/testgrid";   // ← ADD
+import AuthButtons from "./components/AuthButtons";
 
 function App() {
   return (
