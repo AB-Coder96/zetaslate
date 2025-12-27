@@ -2,8 +2,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import Post from "./pages/Post";
 import Weather from "./pages/weather";
+import Profile from "./pages/Profile";
 import Layout from "./components/Layout";
 import TestGridPage from "./components/testgrid";   // ← ADD
+
 
 function App() {
   return (
@@ -32,6 +34,7 @@ function App() {
             }
           />
           <Route path="/post/:id" element={<Post />} />
+          <Route path="/profile/" element={<Profile />} />
         </Routes>
       </Layout>
     </BrowserRouter>

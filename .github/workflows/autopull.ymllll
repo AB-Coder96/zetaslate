@@ -1,0 +1,214 @@
+name: Deploy Site (pull + restart IIS + ensure Postgres)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: site-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+# ─── EDIT PER SERVER ───────────────────────────────────────────────
+env:
+  SITE_PATH: 'C:\\inetpub\\wwwroot\\zetaslate'      # repo root served by IIS
+  PY_EXE:    'C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe'       # system Python IIS runs
+  # The host and port for Waitress
+  WAITRESS_HOST: '127.0.0.1'
+  WAITRESS_PORT: '8000'
+# ───────────────────────────────────────────────────────────────────
+
+jobs:
+  deploy:
+    runs-on: [ self-hosted, windows, x64 ]
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+    # ── 0  Checkout ────────────────────────────────────────────────
+    - uses: actions/checkout@v4
+
+    # ── 0½ Build host-name env-vars (PowerShell-5 safe) ───────────
+    - name: Load project config
+      run: |
+        $cfgPath = "${{ github.workspace }}\project-config.json"
+        $cfg     = @{}
+        if (Test-Path $cfgPath) { $cfg = Get-Content -Raw $cfgPath | ConvertFrom-Json }
+
+        $site = Split-Path -Leaf $Env:SITE_PATH
+        $dom  = '.com'
+        if ($cfg -ne $null -and $cfg.PSObject.Properties['websitedomain'] -and $cfg.websitedomain) {
+          $dom = $cfg.websitedomain
+        }
+
+        $root   = "$site$dom"
+        $admin  = "admin.$root"
+        $api    = "api.$root"
+
+        "WARMUP_URL=https://$root/"                                 | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_ALLOWED_HOSTS=$root,www.$root,$admin,$api,$Env:WAITRESS_HOST" | Out-File $Env:GITHUB_ENV -Append
+        "DJANGO_CSRF_TRUSTED=https://$root,https://$admin,https://$api" | Out-File $Env:GITHUB_ENV -Append
+        "SITE_NAME=$site"                                             | Out-File $Env:GITHUB_ENV -Append
+
+    # ── 1  Git fast-forward IIS folder ─────────────────────────────
+    - name: Configure Git
+      run: |
+        git config --global --add safe.directory $Env:SITE_PATH
+        $url = "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+        git -C $Env:SITE_PATH remote set-url origin $url
+
+    - name: Set global Git identity
+      run: |
+        git config --global user.name  "${{ github.actor }} (GitHub Actions)"
+        git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+    - name: Pull site code
+      run: |
+        git -C $Env:SITE_PATH fetch --all --prune
+        git -C $Env:SITE_PATH reset --hard origin/main
+
+    # ── 2  Python & requirements ───────────────────────────────────
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: pip
+        cache-dependency-path: backend/requirements.txt
+
+    - name: Install requirements (including Waitress)
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -r "${{ github.workspace }}\backend\requirements.txt"
+        & $Env:PY_EXE -m pip install waitress
+
+    # ── 2¾  Install URL-Rewrite if missing ─────────────────────────
+    - name: Ensure IIS URL-Rewrite module and Application Request Routing (ARR)
+      run: |
+        Import-Module WebAdministration
+
+        # Check for URL-Rewrite module
+        if (-not (Get-WebGlobalModule -Name 'RewriteModule' -ErrorAction SilentlyContinue)) {
+          Write-Host 'URL-Rewrite not found – installing...'
+          $msi = Join-Path $env:TEMP 'rewrite.msi'
+          Invoke-WebRequest -Uri 'https://download.microsoft.com/download/D/5/1/D5149994-9C36-4039-A20F-1E0DAFA94230/rewrite_amd64.msi' -OutFile $msi
+          Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
+          Remove-Item $msi
+        } else {
+          Write-Host 'URL-Rewrite already installed.'
+        }
+        
+        # NOTE: For reverse proxying, you also need the ARR module.
+        # This script assumes it's already installed. If not, you'll need to add
+        # a similar install step for it.
+
+    # ── 2⅞½  Configure IIS for Reverse Proxy ─────────────────────────
+    - name: Stop any existing Waitress server
+      run: |
+        $projDir = Join-Path $Env:SITE_PATH 'backend'
+        $pidFile = Join-Path $projDir 'waitress.pid'
+        
+        # Check if the PID file exists and kill the old process
+        if (Test-Path $pidFile) {
+          $pid = Get-Content -Path $pidFile
+          if (Get-Process -Id $pid -ErrorAction SilentlyContinue) {
+            Write-Host "Killing old Waitress process with PID $pid"
+            Stop-Process -Id $pid -Force
+          }
+          Remove-Item -Path $pidFile
+        }
+
+    # ── 2⅞⁺ Start Waitress server ───────────────────────────────────
+    - name: Start Waitress server
+      run: |
+        $projDir = Join-Path $Env:SITE_PATH 'backend'
+        Set-Location $projDir
+        # Restart the Windows Service to load the new code
+        Restart-Service -Name zetaslate-waitress -Force
+        Write-Host "Waitress service restarted to load new code."
+    # ── 3  Restart IIS ─────────────────────────────────────────────
+    - name: Restart IIS
+      run: |
+        iisreset /stop
+        iisreset /start
+
+    # ── 4  PostgreSQL cluster / service ────────────────────────────
+    - name: Ensure & (re)start PostgreSQL
+      run: |
+        $svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -like 'postgresql*' } |
+              Sort-Object Name -Descending | Select-Object -First 1
+        if (-not $svc) { throw 'PostgreSQL service not found' }
+
+        $cmd = $svc.PathName
+        if ($cmd -match '"([^"]+\\pg_ctl\.exe)"')        { $pgCtl = $Matches[1] }
+        elseif ($cmd -match '([^\s"]+\\pg_ctl\.exe)')    { $pgCtl = $Matches[1] }
+        else { throw 'pg_ctl.exe not found in service command' }
+
+        if ($cmd -match '-D\s+"([^"]+)"')        { $data = $Matches[1] }
+        elseif ($cmd -match '-D\s+([^\s"]+)')    { $data = $Matches[1] }
+        else { throw 'data directory not found in service command' }
+
+        if (-not (Test-Path $data)) {
+          & "$pgCtl" initdb -D "$data"
+          & "$pgCtl" register -N $svc.Name -D "$data" -U 'NT AUTHORITY\NetworkService'
+          Set-Service $svc.Name -StartupType Automatic
+          Start-Service $svc.Name
+        } else {
+          Restart-Service $svc.Name -Force
+        }
+
+    # ── 4½ Ensure DB & role (no ternaries) ─────────────────────────
+    - name: Ensure DB & role exist
+      run: |
+        $Env:PGPASSWORD = $Env:POSTGRES_PASSWORD
+        echo "::add-mask::$Env:PGPASSWORD"
+
+        # pick names
+        $db = $Env:POSTGRES_DB
+        if (-not $db) { $db = $Env:SITE_NAME }
+
+        $user = $Env:POSTGRES_USER
+        if (-not $user) { $user = $Env:SITE_NAME }
+
+        $sup = $Env:POSTGRES_SUPERUSER
+
+        # locate psql.exe
+        $svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -like 'postgresql*' } |
+              Sort-Object Name -Descending | Select-Object -First 1
+        $bin = ''
+        if ($svc.PathName -match '"([^"]+\\)pg_ctl\.exe"')      { $bin = $Matches[1] }
+        elseif ($svc.PathName -match '([^\s"]+\\)pg_ctl\.exe')  { $bin = $Matches[1] }
+
+        $psql = 'psql'
+        if ($bin) {
+          $candidate = "$bin\psql.exe"
+          if (Test-Path $candidate) { $psql = $candidate }
+        }
+
+        # role
+        if (-not (& "$psql" -U $sup -tAc "SELECT 1 FROM pg_roles WHERE rolname='$user'")) {
+          & "$psql" -U $sup -c "CREATE USER $user WITH PASSWORD '$Env:POSTGRES_PASSWORD';"
+        }
+
+        # database
+        if (-not (& "$psql" -U $sup -tAc "SELECT 1 FROM pg_database WHERE datname='$db'")) {
+          & "$psql" -U $sup -c "CREATE DATABASE $db OWNER $user;"
+        }
+
+    # ── 5  Django migrate ──────────────────────────────────────────
+    - name: Django migrate
+      run: |
+        $proj = Join-Path $Env:SITE_PATH 'backend'
+        if (-not (Test-Path "$proj\manage.py")) { throw "manage.py not found at $proj" }
+        Set-Location $proj
+        python manage.py migrate --noinput
+    # ── 5½  Django collectstatic ──────────────────────────────────
+    - name: Collect static files
+      run: |
+        $proj = Join-Path $Env:SITE_PATH 'backend'
+        Set-Location $proj
+        python manage.py collectstatic --noinput
+
+    # ── 6  Warm-up request ─────────────────────────────────────────
+    - name: Warm-up request
+      run: |
+        Invoke-WebRequest -Uri $Env:WARMUP_URL -UseBasicParsing -TimeoutSec 30
