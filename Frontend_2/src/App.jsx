@@ -1,4 +1,5 @@
 import React from "react";
+import { AuthProvider } from "./auth/AuthContext";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import TopHeader from "./layout/TopHeader";
@@ -50,7 +51,8 @@ export default function App() {
   };
 
   return (
-    <BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
       <div className="appShell">
         <div
           className="bg"
@@ -91,5 +93,6 @@ export default function App() {
         <Footer />
       </div>
     </BrowserRouter>
+    </AuthProvider>
   );
 }
