@@ -1,0 +1,448 @@
+:root{
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.70);
+  --border: rgba(255,255,255,0.14);
+  --shadow: 0 20px 50px rgba(0,0,0,0.55);
+  --radius: 14px;
+
+  --topH: 76px;
+  --bottomH: 58px;
+  --leftW: 240px;
+  --leftWClosed: 72px;
+  --rightW: 340px;
+  --rightWClosed: 54px;
+}
+
+*{ box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: var(--text);
+}
+
+.appShell{
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: var(--topH) 1fr var(--bottomH);
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "top top top"
+    "left center right"
+    "bottom bottom bottom";
+}
+
+/* Background */
+.bg{
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  transform: scale(1.02);
+  filter: saturate(0.95) contrast(1.05);
+  z-index: 0;
+}
+.overlay{
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.70) 75%, rgba(0,0,0,0.88) 100%),
+    linear-gradient(to bottom, rgba(0,0,0,0.35), rgba(0,0,0,0.60));
+  z-index: 1;
+}
+
+/* Mobile drawer backdrop */
+.drawerBackdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+  z-index: 40;
+}
+.drawerBackdrop.show{
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Top header */
+.topHeader{
+  grid-area: top;
+  position: relative;
+  z-index: 60;
+  padding: 18px 16px;
+}
+.topHeaderInner{
+  height: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.brand{
+  letter-spacing: 0.5px;
+  font-size: 20px;
+  opacity: 0.95;
+  text-align: center;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iconButton{
+  width: 44px;
+  height: 44px;
+  display:grid;
+  place-items:center;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.hamburger{
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hamburger span{
+  display:block;
+  width: 18px;
+  height: 2px;
+  background: rgba(255,255,255,0.85);
+  border-radius: 2px;
+}
+
+/* Side panels as flex columns so their content can scroll */
+.leftNav,
+.rightPanel{
+  display: flex;
+  flex-direction: column;
+}
+
+/* Left nav */
+.leftNav{
+  grid-area: left;
+  position: relative;
+  z-index: 55;
+  height: calc(100vh - var(--topH) - var(--bottomH));
+  border-right: 1px solid var(--border);
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+.leftNav.open{ width: var(--leftW); }
+.leftNav.closed{ width: var(--leftWClosed); }
+
+.leftNavTop{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.leftNavTitle{
+  font-size: 14px;
+  color: var(--muted);
+}
+.miniBtn{
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.35);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+/* Scroll area for nav links */
+.leftNavLinks{
+  padding: 12px;
+  padding-right: 12px;        /* ensures scrollbar doesn't visually collide */
+  display: grid;
+  gap: 10px;
+  flex: 1 1 auto;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+
+  scrollbar-gutter: stable;   /* prevents width "shrink" when scrollbar appears */
+  padding-bottom: 14px;
+}
+
+/* Make each link keep consistent full width */
+.navLink{
+  display: block;
+  width: 100%;
+  justify-self: stretch;
+
+  text-decoration: none;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.35);
+  color: rgba(255,255,255,0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.navLink:hover{ background: rgba(255,255,255,0.08); }
+.navLink.active{
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.95);
+}
+
+/* Collapsed left nav: hide title so it doesn't look clipped */
+.leftNav.closed .leftNavTitle{ display: none; }
+.leftNav.closed .leftNavTop{ justify-content: flex-end; }
+.leftNav.closed .navLink{
+  text-align: center;
+  padding: 12px;
+}
+
+/* Right panel */
+.rightPanel{
+  grid-area: right;
+  position: relative;
+  z-index: 55;
+  height: calc(100vh - var(--topH) - var(--bottomH));
+  border-left: 1px solid var(--border);
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+.rightPanel.open{ width: var(--rightW); }
+.rightPanel.closed{ width: var(--rightWClosed); }
+
+.rightPanelTop{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.rightPanelTitle{
+  font-size: 14px;
+  color: var(--muted);
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Center */
+.center{
+  grid-area: center;
+  position: relative;
+  z-index: 10;
+  height: calc(100vh - var(--topH) - var(--bottomH));
+  display: grid;
+  place-items: center;
+  padding: 18px 14px;
+}
+
+/* Footer */
+.footer{
+  grid-area: bottom;
+  position: relative;
+  z-index: 60;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 12px 14px;
+}
+.footerInner{
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Center hero */
+.hero{
+  text-align: center;
+  padding: 26px 18px;
+  max-width: 760px;
+}
+.heroTitle{
+  margin: 0 0 10px;
+  font-weight: 500;
+  font-size: clamp(32px, 4vw, 54px);
+}
+.heroSub{
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pageCard{
+  width: min(860px, 92vw);
+  padding: 22px 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.32);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(6px);
+}
+
+/* Auth */
+.authArea{
+  padding: 14px 12px;
+  flex: 1 1 auto;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+
+  scrollbar-gutter: stable;   /* prevents width changes when scrollbar appears */
+  padding-bottom: 14px;
+}
+.fieldLabel{
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 10px 0 6px;
+}
+.input{
+  width: 100%;
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.35);
+  color: var(--text);
+  outline: none;
+}
+.input::placeholder{ color: rgba(255,255,255,0.35); }
+
+.authRow{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+.link{
+  color: rgba(255,255,255,0.75);
+  text-decoration: none;
+  font-size: 12px;
+}
+.link:hover{ text-decoration: underline; }
+
+.btn{
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.10);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+.btn:hover{ background: rgba(255,255,255,0.14); }
+
+.divider{
+  height: 1px;
+  background: var(--border);
+  margin: 14px 0;
+}
+.authButtons{
+  display: grid;
+  gap: 10px;
+}
+.btnGhost{
+  width: 100%;
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
+}
+.btnDanger{
+  background: rgba(255, 70, 70, 0.20);
+  text-decoration: none;
+  width: 100%;
+  display: inline-block;
+  text-align: center;
+}
+
+/* ===== Scrollbar styling (Chrome/Edge + Firefox) ===== */
+.leftNavLinks,
+.authArea{
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(255,255,255,0.22) transparent; /* Firefox */
+}
+
+/* Chrome / Edge */
+.leftNavLinks::-webkit-scrollbar,
+.authArea::-webkit-scrollbar{
+  width: 8px;
+}
+.leftNavLinks::-webkit-scrollbar-track,
+.authArea::-webkit-scrollbar-track{
+  background: transparent;
+}
+.leftNavLinks::-webkit-scrollbar-thumb,
+.authArea::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,0.20);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.leftNavLinks::-webkit-scrollbar-thumb:hover,
+.authArea::-webkit-scrollbar-thumb:hover{
+  background: rgba(255,255,255,0.30);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Mobile: overlay drawers so center isn't squeezed */
+@media (max-width: 900px){
+  .appShell{
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "top"
+      "center"
+      "bottom";
+  }
+
+  .leftNav,
+  .rightPanel{
+    position: fixed;
+    top: var(--topH);
+    bottom: var(--bottomH);
+    height: auto;
+    z-index: 55;
+    box-shadow: var(--shadow);
+    transition: transform 220ms ease;
+  }
+
+  .leftNav{
+    left: 0;
+    width: min(82vw, 320px);
+  }
+  .leftNav.closed{ transform: translateX(-110%); }
+  .leftNav.open{ transform: translateX(0); }
+
+  .rightPanel{
+    right: 0;
+    width: min(86vw, 360px);
+  }
+  .rightPanel.closed{ transform: translateX(110%); }
+  .rightPanel.open{ transform: translateX(0); }
+
+  /* IMPORTANT: override desktop open/closed width rules on mobile drawers */
+  .leftNav.open,
+  .leftNav.closed{
+    width: min(82vw, 320px);
+  }
+  .rightPanel.open,
+  .rightPanel.closed{
+    width: min(86vw, 360px);
+  }
+
+  .center{ width: 100%; }
+}
