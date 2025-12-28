@@ -1,60 +1,92 @@
+// src/auth/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 const AuthContext = createContext(null);
 
 const TOKEN_KEY = "authToken";
 
+// ✅ Hardcoded production API base (per your request)
+const API_BASE = "https://api.core.zetaslate.com";
+
+/**
+ * Low-level API helper.
+ * - Uses JSON requests/responses
+ * - Attaches Authorization header if token provided
+ * - Throws a helpful Error on non-2xx responses
+ */
 async function apiRequest(path, { token, method = "GET", body } = {}) {
-  const headers = { "Content-Type": "application/json" };
+  const url = `${API_BASE}${path}`;
+
+  const headers = {
+    "Content-Type": "application/json",
+  };
   if (token) headers.Authorization = `Token ${token}`;
 
-  const res = await fetch(path, {
+  const res = await fetch(url, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const data = await res.json().catch(() => ({}));
+  // Try to parse JSON; if not JSON, fall back to text
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text || null;
+  }
+
   if (!res.ok) {
-    const msg = data?.detail || `Request failed (${res.status})`;
+    // Common DRF error shape: { detail: "..." }
+    const msg =
+      (data && typeof data === "object" && data.detail) ||
+      (typeof data === "string" && data) ||
+      `Request failed (${res.status})`;
     throw new Error(msg);
   }
+
   return data;
 }
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(Boolean(token));
+  const [loading, setLoading] = useState(true);
 
+  // Load "me" if token exists
   useEffect(() => {
-    let cancelled = false;
+    let alive = true;
 
-    async function bootstrap() {
+    async function loadMe() {
       if (!token) {
-        setUser(null);
-        setLoading(false);
+        if (alive) {
+          setUser(null);
+          setLoading(false);
+        }
         return;
       }
-      setLoading(true);
+
       try {
         const me = await apiRequest("/api/auth/me/", { token });
-        if (!cancelled) setUser(me);
-      } catch (_e) {
-        // token invalid/expired/deleted
+        if (alive) setUser(me);
+      } catch (err) {
+        // Token invalid/expired/revoked -> clear it
         localStorage.removeItem(TOKEN_KEY);
-        if (!cancelled) {
+        if (alive) {
           setToken(null);
           setUser(null);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (alive) setLoading(false);
       }
     }
 
-    bootstrap();
+    setLoading(true);
+    loadMe();
+
     return () => {
-      cancelled = true;
+      alive = false;
     };
   }, [token]);
 
@@ -63,26 +95,64 @@ export function AuthProvider({ children }) {
       token,
       user,
       loading,
+
+      /**
+       * Login via token API.
+       * POST /api/auth/login/ -> { token, user }
+       */
       async login(username, password) {
         const data = await apiRequest("/api/auth/login/", {
           method: "POST",
           body: { username, password },
         });
+
+        if (!data || !data.token) {
+          throw new Error("Login succeeded but no token was returned.");
+        }
+
         localStorage.setItem(TOKEN_KEY, data.token);
         setToken(data.token);
-        setUser(data.user);
-        return data.user;
+
+        // backend returns user in response; if not, we can fetch /me
+        if (data.user) setUser(data.user);
+        else {
+          const me = await apiRequest("/api/auth/me/", { token: data.token });
+          setUser(me);
+        }
+
+        return data;
       },
+
+      /**
+       * Logout by deleting token on server, then clearing local storage.
+       * POST /api/auth/logout/
+       */
       async logout() {
         try {
-          if (token) await apiRequest("/api/auth/logout/", { method: "POST", token });
-        } catch (_e) {
-          // ignore - we still clear locally
+          if (token) {
+            await apiRequest("/api/auth/logout/", { token, method: "POST" });
+          }
+        } finally {
+          localStorage.removeItem(TOKEN_KEY);
+          setToken(null);
+          setUser(null);
         }
-        localStorage.removeItem(TOKEN_KEY);
-        setToken(null);
-        setUser(null);
       },
+
+      /**
+       * Helper for authenticated API calls.
+       * Example:
+       *   const data = await authFetch("/api/some/endpoint/", { method:"GET" })
+       */
+      async authFetch(path, options = {}) {
+        if (!token) throw new Error("Not authenticated.");
+        return apiRequest(path, { token, ...options });
+      },
+
+      /**
+       * Expose API base in case components want it (optional).
+       */
+      apiBase: API_BASE,
     };
   }, [token, user, loading]);
 
@@ -91,6 +161,8 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within <AuthProvider />");
+  if (!ctx) {
+    throw new Error("useAuth must be used inside <AuthProvider>.");
+  }
   return ctx;
 }
