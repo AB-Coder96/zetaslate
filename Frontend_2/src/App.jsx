@@ -53,7 +53,12 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-      <div className="appShell">
+      <div className="appShell"
+      style={{
+        "--leftCol": leftOpen ? "var(--leftW)" : "var(--leftWClosed)",
+        "--rightCol": rightOpen ? "var(--rightW)" : "var(--rightWClosed)",
+      }}      
+      >
         <div
           className="bg"
           style={{ backgroundImage: `url(${BG_IMAGE_URL})` }}

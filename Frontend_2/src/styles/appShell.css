@@ -27,7 +27,7 @@ body {
   overflow: hidden;
   display: grid;
   grid-template-rows: var(--topH) 1fr var(--bottomH);
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: var(--leftCol, auto) 1fr var(--rightCol, auto);
   grid-template-areas:
     "top top top"
     "left center right"
@@ -157,7 +157,13 @@ body {
   background: rgba(0,0,0,0.35);
   color: var(--text);
   border-radius: 10px;
-  padding: 6px 10px;
+  /* Fixed-size buttons = consistent alignment between left/right panels */
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -172,6 +178,8 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 
   scrollbar-gutter: stable;   /* prevents width "shrink" when scrollbar appears */
   padding-bottom: 14px;
@@ -180,8 +188,6 @@ body {
 /* Make each link keep consistent full width */
 .navLink{
   display: block;
-  width: 100%;
-  justify-self: stretch;
 
   text-decoration: none;
   padding: 10px 12px;
@@ -224,11 +230,15 @@ body {
 .rightPanelTop{
   display:flex;
   align-items:center;
-  justify-content: space-between;
+  /* Toggle button sits on the INNER edge (left) to mirror left sidebar */
+  justify-content: flex-start;
+  gap: 10px;
   padding: 14px 12px;
   border-bottom: 1px solid var(--border);
   flex: 0 0 auto;
+  min-height: 56px;
 }
+
 .rightPanelTitle{
   font-size: 14px;
   color: var(--muted);
@@ -238,8 +248,10 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1 1 auto;
 }
-
+.rightPanel.closed .rightPanelTitle{ display: none; }
+.rightPanel.closed .rightPanelTop{ justify-content: center; }
 /* Center */
 .center{
   grid-area: center;
@@ -344,6 +356,30 @@ body {
   padding: 9px 12px;
   cursor: pointer;
 }
+/* Mode tabs (Login / Sign up / Reset) */
+.modeTabs{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.modeTab{
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.35);
+  color: rgba(255,255,255,0.85);
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.modeTab:hover{ background: rgba(255,255,255,0.08); }
+.modeTab.active{
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.95);
+}
+
+.notice{ color: rgba(255,255,255,0.82); }
+.error{ color: #ff7a7a; }
+
 .btn:hover{ background: rgba(255,255,255,0.14); }
 
 .divider{
