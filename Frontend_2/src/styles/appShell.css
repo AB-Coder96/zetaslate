@@ -77,8 +77,9 @@ body {
 }
 .topHeaderInner{
   height: 100%;
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;   /* remove the 1400px limit */
+  margin: 0;         /* remove auto centering */
   display:flex;
   align-items:center;
   justify-content: space-between;
@@ -169,20 +170,14 @@ body {
 
 /* Scroll area for nav links */
 .leftNavLinks{
-  padding: 12px;
-  padding-right: 12px;        /* ensures scrollbar doesn't visually collide */
-  display: grid;
+  flex: 1 1 auto;           /* take remaining height */
+  min-height: 0;            /* CRITICAL for scrolling inside flex */
+  overflow-y: auto;         /* scroll */
+  display: flex;            /* stop the grid stretching issue */
+  flex-direction: column;
   gap: 10px;
-  flex: 1 1 auto;
-
-  overflow-y: auto;
-  overflow-x: hidden;
-  min-height: 0;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-
-  scrollbar-gutter: stable;   /* prevents width "shrink" when scrollbar appears */
-  padding-bottom: 14px;
+  padding: 12px;
+  scrollbar-gutter: stable; 
 }
 
 /* Make each link keep consistent full width */
@@ -195,9 +190,7 @@ body {
   border: 1px solid var(--border);
   background: rgba(0,0,0,0.35);
   color: rgba(255,255,255,0.85);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+
 }
 .navLink:hover{ background: rgba(255,255,255,0.08); }
 .navLink.active{
@@ -211,6 +204,9 @@ body {
 .leftNav.closed .navLink{
   text-align: center;
   padding: 12px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 /* Right panel */
@@ -475,6 +471,12 @@ body {
   .leftNav.closed{
     width: min(82vw, 320px);
   }
+
+  .leftNav.open .navLink{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
   .rightPanel.open,
   .rightPanel.closed{
     width: min(86vw, 360px);
