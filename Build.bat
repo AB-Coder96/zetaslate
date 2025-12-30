@@ -1,6 +1,6 @@
 start cmd /k "cd frontend_2 && npm run build"
-robocopy "frontend_2\dist" "docs" /MIR
 pause
+robocopy "frontend_2\dist" "docs" /MIR
 git add .
 :: commit message = <computer-name> + <this-bat-file-name> + “automatic”
 set "COMMIT_MSG=%COMPUTERNAME% - %~nx0 automatic"

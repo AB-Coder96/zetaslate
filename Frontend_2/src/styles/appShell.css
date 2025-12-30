@@ -27,7 +27,7 @@ body {
   overflow: hidden;
   display: grid;
   grid-template-rows: var(--topH) 1fr var(--bottomH);
-  grid-template-columns: var(--leftCol, auto) 1fr var(--rightCol, auto);
+  grid-template-columns: var(--leftCol, auto) minmax(0, 1fr) var(--rightCol, auto);
   grid-template-areas:
     "top top top"
     "left center right"
