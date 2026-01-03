@@ -401,18 +401,6 @@ function AuthArea() {
           ...
         </form>
       )}
-
-      {/* Admin link (always visible under the auth forms) */}
-      <div className="authRow" style={{ marginTop: 12 }}>
-        <a
-          className="btn btnGhost"
-          href="https://admin.core.zetaslate.com"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Admin Login
-        </a>
-      </div>
     </div>
   );
 }
@@ -431,7 +419,22 @@ export default function RightAuthPanel({ open, onToggle }) {
         </div>
       </div>
 
-      {open && <AuthArea />}
+      {open && (
+        <>
+          <AuthArea />
+
+          <div className="rightPanelBottom">
+            <a
+              className="btn btnGhost"
+              href="https://admin.core.zetaslate.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Admin Login
+            </a>
+          </div>
+        </>
+      )}
     </aside>
   );
 }

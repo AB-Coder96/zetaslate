@@ -11,6 +11,7 @@ import Home from "./pages/Home";
 import About from "./pages/About";
 import Profile from "./pages/Profile";
 import Projects from "./pages/Projects";
+import P404 from "./pages/P404"
 
 import "./styles/appShell.css";
 
@@ -86,6 +87,7 @@ export default function App() {
 
         <main className="center">
           <Routes>
+            <Route path="*" element={<P404 />} />
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/projects" element={<Projects />} />
