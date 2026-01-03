@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 function ModeTabs({ mode, setMode }) {
@@ -32,7 +32,17 @@ function ModeTabs({ mode, setMode }) {
 
 function AuthArea() {
   const navigate = useNavigate();
-  const { user, loading, login, logout, register, requestPasswordReset } = useAuth();
+  const location = useLocation();
+
+  const {
+    user,
+    loading,
+    login,
+    logout,
+    register,
+    requestPasswordReset,
+    confirmPasswordReset,
+  } = useAuth();
 
   const [mode, setMode] = useState("login");
 
@@ -40,6 +50,12 @@ function AuthArea() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+
+  // Reset step-2 state (when coming from email link)
+  const [resetUid, setResetUid] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPassword2, setNewPassword2] = useState("");
 
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -57,6 +73,27 @@ function AuthArea() {
       setBusy(false);
     }
   }
+
+  // If the URL contains uid+token, switch reset tab into "set new password" mode
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const uid = params.get("uid");
+    const token = params.get("token");
+
+    if (uid && token) {
+      setMode("reset");
+      setResetUid(uid);
+      setResetToken(token);
+      setMsg("Set your new password below.");
+      setErr("");
+    } else {
+      // Clear confirm-reset state if query params are removed
+      setResetUid("");
+      setResetToken("");
+      setNewPassword("");
+      setNewPassword2("");
+    }
+  }, [location.search]);
 
   async function onLogin(e) {
     e.preventDefault();
@@ -89,6 +126,43 @@ function AuthArea() {
 
   async function onReset(e) {
     e.preventDefault();
+
+    // STEP 2: we have uid+token -> set new password
+    if (resetUid && resetToken) {
+      if (!newPassword || !newPassword2) {
+        setErr("Please enter and confirm your new password.");
+        return;
+      }
+      if (newPassword !== newPassword2) {
+        setErr("Passwords do not match.");
+        return;
+      }
+
+      await withBusy(async () => {
+        await confirmPasswordReset({
+          uid: resetUid,
+          token: resetToken,
+          newPassword,
+        });
+
+        setMsg("Password updated. You can now log in.");
+        setMode("login");
+
+        // Remove query params so refresh doesn't keep reset mode
+        navigate(location.pathname, { replace: true });
+
+        setResetUid("");
+        setResetToken("");
+        setNewPassword("");
+        setNewPassword2("");
+        setPassword("");
+        setPassword2("");
+      });
+
+      return;
+    }
+
+    // STEP 1: no uid/token -> request reset email
     await withBusy(async () => {
       await requestPasswordReset({ email });
       setMsg("If that email exists, a reset link has been sent.");
@@ -109,11 +183,7 @@ function AuthArea() {
         </div>
 
         <div className="authButtons" aria-label="Account actions">
-          <button
-            className="btn btnGhost"
-            type="button"
-            onClick={() => navigate("/profile")}
-          >
+          <button className="btn btnGhost" type="button" onClick={() => navigate("/profile")}>
             Profile
           </button>
           <button className="btn btnDanger" type="button" onClick={logout}>
@@ -239,11 +309,7 @@ function AuthArea() {
           )}
 
           <div className="authRow" style={{ marginTop: 12 }}>
-            <button
-              className="btn"
-              type="submit"
-              disabled={busy || !username || !password || !password2}
-            >
+            <button className="btn" type="submit" disabled={busy || !username || !password || !password2}>
               {busy ? "Creating…" : "Create account"}
             </button>
           </div>
@@ -252,17 +318,49 @@ function AuthArea() {
 
       {mode === "reset" && (
         <form onSubmit={onReset} style={{ marginTop: 12 }}>
-          <label className="fieldLabel" htmlFor="rp-email">
-            Email
-          </label>
-          <input
-            id="rp-email"
-            className="input"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-          />
+          {resetUid && resetToken ? (
+            <>
+              <label className="fieldLabel" htmlFor="rp-new1">
+                New password
+              </label>
+              <input
+                id="rp-new1"
+                className="input"
+                placeholder="New password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+
+              <label className="fieldLabel" htmlFor="rp-new2">
+                Confirm new password
+              </label>
+              <input
+                id="rp-new2"
+                className="input"
+                placeholder="Confirm new password"
+                type="password"
+                value={newPassword2}
+                onChange={(e) => setNewPassword2(e.target.value)}
+                autoComplete="new-password"
+              />
+            </>
+          ) : (
+            <>
+              <label className="fieldLabel" htmlFor="rp-email">
+                Email
+              </label>
+              <input
+                id="rp-email"
+                className="input"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+              />
+            </>
+          )}
 
           {!!msg && (
             <div className="notice" style={{ marginTop: 10 }}>
@@ -276,8 +374,23 @@ function AuthArea() {
           )}
 
           <div className="authRow" style={{ marginTop: 12 }}>
-            <button className="btn" type="submit" disabled={busy || !email}>
-              {busy ? "Sending…" : "Send reset link"}
+            <button
+              className="btn"
+              type="submit"
+              disabled={
+                busy ||
+                (resetUid && resetToken
+                  ? !newPassword || !newPassword2
+                  : !email)
+              }
+            >
+              {busy
+                ? resetUid && resetToken
+                  ? "Updating…"
+                  : "Sending…"
+                : resetUid && resetToken
+                ? "Set new password"
+                : "Send reset link"}
             </button>
           </div>
         </form>

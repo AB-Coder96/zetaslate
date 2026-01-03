@@ -124,6 +124,53 @@ export function AuthProvider({ children }) {
       },
 
       /**
+       * Register via token API.
+       * POST /api/auth/register/ -> { token, user }
+       */
+      async register({ username, password, email }) {
+        const data = await apiRequest("/api/auth/register/", {
+          method: "POST",
+          body: { username, password, email },
+        });
+
+        // If backend returns a token, treat it like auto-login
+        if (data?.token) {
+          localStorage.setItem(TOKEN_KEY, data.token);
+          setToken(data.token);
+
+          if (data.user) setUser(data.user);
+          else {
+            const me = await apiRequest("/api/auth/me/", { token: data.token });
+            setUser(me);
+          }
+        }
+
+        return data;
+      },
+
+      /**
+       * Start password reset (email link).
+       * POST /api/auth/password-reset/ -> { ok: true }
+       */
+      async requestPasswordReset({ email }) {
+        return apiRequest("/api/auth/password-reset/", {
+          method: "POST",
+          body: { email },
+        });
+      },
+
+      /**
+       * Finish password reset (uid/token from email + new password).
+       * POST /api/auth/password-reset-confirm/ -> { ok: true }
+       */
+      async confirmPasswordReset({ uid, token, newPassword }) {
+        return apiRequest("/api/auth/password-reset-confirm/", {
+          method: "POST",
+          body: { uid, token, new_password: newPassword },
+        });
+      },
+
+      /**
        * Logout by deleting token on server, then clearing local storage.
        * POST /api/auth/logout/
        */
