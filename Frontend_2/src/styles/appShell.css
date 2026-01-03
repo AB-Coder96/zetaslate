@@ -307,7 +307,7 @@ body {
 
 .pageCard{
   width: 100%;
-  max-width: 860px;
+  max-width: 90%;
   min-width: 0;
   padding: 22px 20px;
   border-radius: var(--radius);

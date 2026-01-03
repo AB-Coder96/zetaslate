@@ -11,10 +11,19 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
     <title>ZetaSlate</title>
-    <script type="module" crossorigin src="/assets/index-CVKAga5d.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BxVFINjn.css">
+    <script type="module" crossorigin src="/assets/index-Irc8CK50.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DGrS6lf7.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var redirect = params.get("redirect");
+        if (redirect) {
+          window.history.replaceState(null, "", redirect);
+        }
+      })();
+    </script>
   </body>
 </html>
