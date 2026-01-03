@@ -10,6 +10,7 @@ import Footer from "./layout/Footer";
 import Home from "./pages/Home";
 import About from "./pages/About";
 import Profile from "./pages/Profile";
+import Projects from "./pages/Projects";
 
 import "./styles/appShell.css";
 
@@ -87,6 +88,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
+            <Route path="/projects" element={<Projects />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile1" element={<Profile />} />
             <Route path="/profile2" element={<Profile />} />

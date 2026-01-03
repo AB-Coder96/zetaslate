@@ -279,7 +279,15 @@ body {
   color: var(--muted);
   font-size: 12px;
 }
+.footerInner a{
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
+.footerInner a:hover{
+  opacity: 0.9;
+}
 /* Center hero */
 .hero{
   text-align: center;
