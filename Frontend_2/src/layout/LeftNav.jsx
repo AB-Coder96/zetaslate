@@ -17,10 +17,10 @@ export default function LeftNav({ open, onToggle }) {
           className={({ isActive }) => (isActive ? "navLink active" : "navLink")}
         >
           {open ? "Projects" : "🗂️"}
-        </NavLink>
-        <NavLink to="/" className={({ isActive }) => (isActive ? "navLink active" : "navLink")}>
+       </NavLink>
+        {/* <NavLink to="/" className={({ isActive }) => (isActive ? "navLink active" : "navLink")}>
           {open ? "Home" : "🏠"}
-        </NavLink>
+        </NavLink>*/}
         <NavLink
           to="/about"
           className={({ isActive }) => (isActive ? "navLink active" : "navLink")}

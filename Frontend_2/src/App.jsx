@@ -88,7 +88,7 @@ export default function App() {
         <main className="center">
           <Routes>
             <Route path="*" element={<P404 />} />
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<Projects />} />
             <Route path="/about" element={<About />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/profile" element={<Profile />} />
