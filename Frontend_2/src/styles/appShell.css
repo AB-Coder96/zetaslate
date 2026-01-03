@@ -255,8 +255,14 @@ body {
   z-index: 10;
   height: calc(100vh - var(--topH) - var(--bottomH));
   display: grid;
-  place-items: center;
+
+  /* OPTIONAL: makes cards start at the top instead of vertical-center */
+  place-items: start center;
+
   padding: 18px 14px;
+
+  /* IMPORTANT: allows children to size/scroll correctly */
+  min-height: 0;
 }
 
 /* Footer */
@@ -301,6 +307,12 @@ body {
   background: rgba(0,0,0,0.32);
   box-shadow: var(--shadow);
   backdrop-filter: blur(6px);
+
+  /* NEW: keep card inside center area and scroll internally */
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
 }
 
 /* Auth */
@@ -485,4 +497,68 @@ body {
   }
 
   .center{ width: 100%; }
+}
+/* ---- About page helpers ---- */
+.aboutLead{
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.aboutBadges{
+  margin-top: 12px;
+}
+
+.codeBadge{
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 6px 8px 0 0;
+  background: rgba(0,0,0,0.22);
+}
+
+.aboutGrid{
+  margin-top: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+@media (min-width: 860px){
+  .aboutGrid{
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.aboutCard{
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 14px;
+  background: rgba(0,0,0,0.20);
+}
+
+.aboutCard h2{
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+
+.aboutList{
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.aboutMeta{
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.aboutFooter{
+  margin-top: 16px;
+  color: var(--muted);
+  line-height: 1.5;
 }
