@@ -21,8 +21,8 @@ const BG_IMAGE_URL =
 export default function App() {
   const [isMobile, setIsMobile] = React.useState(false);
 
-  const [leftOpen, setLeftOpen] = React.useState(true);
-  const [rightOpen, setRightOpen] = React.useState(true);
+  const [leftOpen, setLeftOpen] = React.useState(false);
+  const [rightOpen, setRightOpen] = React.useState(false);
 
   React.useEffect(() => {
     const mq = window.matchMedia("(max-width: 900px)");
@@ -33,8 +33,8 @@ export default function App() {
         setLeftOpen(false);
         setRightOpen(false);
       } else {
-        setLeftOpen(true);
-        setRightOpen(true);
+        setLeftOpen(false);
+        setRightOpen(false);
       }
     };
 
