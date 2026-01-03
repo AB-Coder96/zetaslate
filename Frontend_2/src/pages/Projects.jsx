@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import {API_BASE} from "../env"
 
 function joinUrl(base, path) {
   const b = (base || "").replace(/\/$/, "");
@@ -32,7 +33,7 @@ function normalizeLinks(links) {
 export default function Projects() {
   const { token } = useAuth();
 
-  const API_BASE = import.meta.env.VITE_API_BASE || "";
+ 
   const PROJECTS_URL = joinUrl(API_BASE, "/api/core-project/");
   const TAGS_URL = joinUrl(API_BASE, "/api/core-projecttag/");
 

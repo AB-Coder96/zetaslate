@@ -1,12 +1,10 @@
 // src/auth/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {API_BASE} from "../env"
 
 const AuthContext = createContext(null);
 
 const TOKEN_KEY = "authToken";
-
-// ✅ Hardcoded production API base (per your request)
-const API_BASE = "https://api.core.zetaslate.com";
 
 /**
  * Low-level API helper.
