@@ -194,6 +194,7 @@ function AuthArea() {
     );
   }
 
+
   // ✅ Not logged in: Login / Sign up / Reset tabs
   return (
     <div className="authArea">
@@ -395,6 +396,23 @@ function AuthArea() {
           </div>
         </form>
       )}
+            {mode === "reset" && (
+        <form onSubmit={onReset} style={{ marginTop: 12 }}>
+          ...
+        </form>
+      )}
+
+      {/* Admin link (always visible under the auth forms) */}
+      <div className="authRow" style={{ marginTop: 12 }}>
+        <a
+          className="btn btnGhost"
+          href="https://admin.core.zetaslate.com"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Admin Login
+        </a>
+      </div>
     </div>
   );
 }
