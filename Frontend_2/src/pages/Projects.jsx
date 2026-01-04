@@ -261,10 +261,10 @@ export default function Projects() {
                     </a>
                   ))}
                 </div>
-
+                {/* 
                 <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
                   GitHub iframe embeds usually fail (security headers). Best is to link out. Gists embed fine.
-                </div>
+                </div> */}
               </div>
             );
           })}
