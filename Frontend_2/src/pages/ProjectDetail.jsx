@@ -126,7 +126,7 @@ export default function ProjectDetail() {
         {project.github_url ? (
                           <a
                             className="pillBtn icon"
-                            href={p.github_url}
+                            href={project.github_url}
                             target="_blank"
                             rel="noreferrer"
                             aria-label="GitHub"
