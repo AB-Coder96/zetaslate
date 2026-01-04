@@ -201,11 +201,22 @@ body {
 /* Collapsed left nav: hide title so it doesn't look clipped */
 .leftNav.closed .leftNavTitle{ display: none; }
 .leftNav.closed .leftNavTop{ justify-content: flex-end; }
+.leftNav.closed .leftNavLinks{
+  padding: 12px 0;       /* remove left/right padding so items can center */
+  align-items: center;   /* center the buttons in the column */
+}
+
 .leftNav.closed .navLink{
+  width: 48px;
+  height: 48px;
+  padding: 0;
+
+  display: grid;
+  place-items: center;   /* centers emoji/SVG both axes */
+
   text-align: center;
-  padding: 12px;
-  overflow: visible;
-  text-overflow: clip;
+  line-height: 1;        /* prevents vertical "baseline" drift */
+  font-size: 20px;       /* optional: makes icons feel consistent */
   white-space: normal;
 }
 
