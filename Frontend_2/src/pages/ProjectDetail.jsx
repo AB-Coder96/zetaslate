@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { API_BASE } from "../env";
-import Markdown from "../components/Markdown";
+import Markdown from "../Components/Markdown";
 
 function joinUrl(base, path) {
   const b = (base || "").replace(/\/$/, "");
@@ -97,22 +97,26 @@ export default function ProjectDetail() {
       <div style={{ height: 14 }} />
 
       <div className="aboutCard">
-                        {p.thumbnail ? (
-                          <div style={{ marginBottom: 10 }}>
-                            <img
-                              src={p.thumbnail?.startsWith("http") ? p.thumbnail : joinUrl(API_BASE, p.thumbnail)}
-                              alt={`${p.title} thumbnail`}
-                              style={{
-                                width: "100%",
-                                borderRadius: 12,
-                                border: "1px solid rgba(255,255,255,0.08)",
-                              }}
-                              loading="lazy"
-                            />
-                          </div>
-                        ) : null}
+{project?.thumbnail ? (
+  <div style={{ marginBottom: 10 }}>
+    <img
+      src={
+        project.thumbnail?.startsWith("http")
+          ? project.thumbnail
+          : joinUrl(API_BASE, project.thumbnail)
+      }
+      alt={`${project.title} thumbnail`}
+      style={{
+        width: "100%",
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
+      loading="lazy"
+    />
+  </div>
+) : null}
         {markdown?.trim() ? (
-          <Markdown text={markdown} />
+          <Markdown text={markdown} baseUrl={API_BASE} />
         ) : (
           <div className="muted">
             No README uploaded for this project yet. Upload a <span className="codeBadge">.md</span> in Django admin.

@@ -657,3 +657,48 @@ body {
   color: var(--muted);
   margin-bottom: 6px;
 }
+.mdGallery{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.mdImg{
+  width: 100%;
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.mdGallery .mdImg{
+  flex: 1 1 260px; /* makes multiple images sit side-by-side when there’s space */
+}
+.clickableCard{
+  cursor: pointer;
+  transition: transform .12s ease, background .12s ease, border-color .12s ease;
+}
+
+.clickableCard:hover{
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.22);
+  transform: translateY(-2px);
+}
+
+.clickableCard:focus-visible{
+  outline: 2px solid rgba(255,255,255,0.35);
+  outline-offset: 2px;
+}
+
+.projectCta{
+  margin: 10px 0 6px;
+  font-size: 13px;
+  opacity: 0.65;
+  color: rgba(255,255,255,0.85);
+  transition: opacity .12s ease, transform .12s ease;
+}
+
+.clickableCard:hover .projectCta{
+  opacity: 1;
+  transform: translateY(-1px);
+}

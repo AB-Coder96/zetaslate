@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import {API_BASE} from "../env"
 import { SiGithub } from "react-icons/si";
-import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 
 function joinUrl(base, path) {
@@ -200,7 +199,19 @@ export default function Projects() {
               e.stopPropagation();
             };
             return (
-              <div key={p.id || p.slug || p.title} className="aboutCard">
+              <div
+                key={p.id || p.slug || p.title}
+                className="aboutCard clickableCard"
+                role="link"
+                tabIndex={0}
+                onClick={goToDetails}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    goToDetails();
+                  }
+                }}
+              >
                 <div className="rowBetween" style={{ marginBottom: 10 }}>
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 700 }}>{p.title}</div>
@@ -240,10 +251,11 @@ export default function Projects() {
                     ))}
                   </div>
                 ) : null}
-                <Link className="pillBtn" to={`/projects/${p.id}`}>Details</Link>
+                {/*<Link className="pillBtn" to={`/projects/${p.id}`}>Details</Link>*/}
+                <div className="projectCta" aria-hidden="true">View details →</div>
                 <div className="pillRow">
                   {p.live_url ? (
-                    <a className="pillBtn" href={p.live_url} target="_blank" rel="noreferrer">
+                    <a className="pillBtn" href={p.live_url} target="_blank" rel="noreferrer" onClick={stop}>
                       Live
                     </a>
                   ) : null}
@@ -256,12 +268,13 @@ export default function Projects() {
                     rel="noreferrer"
                     aria-label="GitHub"
                     title="GitHub"
+                    onClick={stop}
                   >
                     <SiGithub size={18} />
                   </a>
                 ) : null}
                   {p.case_study_url ? (
-                    <a className="pillBtn" href={p.case_study_url} target="_blank" rel="noreferrer">
+                    <a className="pillBtn" href={p.case_study_url} target="_blank" rel="noreferrer" onClick={stop}>
                       Case Study
                     </a>
                   ) : null}
@@ -273,6 +286,7 @@ export default function Projects() {
                       href={l.url}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={stop}
                     >
                       {l.label}
                     </a>
