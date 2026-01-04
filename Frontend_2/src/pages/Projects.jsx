@@ -240,7 +240,7 @@ export default function Projects() {
                   </div>
                 ) : null}
 
-                {p.description ? <div style={{ marginBottom: 10 }}>{p.description}</div> : null}
+                {p.summary ? <div style={{ marginBottom: 10 }}>{p.summary}</div> : null}
 
                 {tagList.length > 0 ? (
                   <div className="pillRow" style={{ marginBottom: 10 }}>
