@@ -123,7 +123,7 @@ export default function ProjectDetail() {
             No README uploaded for this project yet. Upload a <span className="codeBadge">.md</span> in Django admin.
           </div>
         )}
-        {p.github_url ? (
+        {project.github_url ? (
                           <a
                             className="pillBtn icon"
                             href={p.github_url}

@@ -32,18 +32,109 @@ export default function Markdown({ text = "", baseUrl = "" }) {
   }
 
   const renderInline = (s) => {
-    const parts = s.split(/(`[^`]+`)/g);
-    return parts.map((p, idx) => {
-      if (p.startsWith("`") && p.endsWith("`")) {
-        return (
-          <code key={idx} className="mdInlineCode">
-            {p.slice(1, -1)}
-          </code>
+  // 1) Split out inline code first so we don't parse markdown inside `code`
+  const parts = s.split(/(`[^`]+`)/g);
+
+  const parseMarks = (text, keyPrefix = "") => {
+    // Supports: **bold**, *italic*, __bold__, _italic_, ~~strike~~, [text](url)
+    const tokenRe =
+      /(!\[[^\]]*\]\([^)]+\)|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*|_[^_\n]+_|~~[^~]+~~)/g;
+
+    const out = [];
+    let last = 0;
+    let m;
+
+    while ((m = tokenRe.exec(text))) {
+      const start = m.index;
+      const token = m[0];
+
+      if (start > last) out.push(text.slice(last, start));
+
+      // Link: [text](url)
+      if (token.startsWith("[") && token.includes("](")) {
+        const mm = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (mm) {
+          out.push(
+            <a key={`${keyPrefix}a${start}`} href={mm[2]} target="_blank" rel="noreferrer">
+              {mm[1]}
+            </a>
+          );
+        } else {
+          out.push(token);
+        }
+      }
+      // Image inline: ![alt](src)  (keeps it simple; your gallery logic still works too)
+      else if (token.startsWith("![") && token.includes("](")) {
+        const mm = token.match(/^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)$/);
+        if (mm) {
+          out.push(
+            <img
+              key={`${keyPrefix}img${start}`}
+              className="mdImg"
+              src={mm[2]}
+              alt={mm[1] || ""}
+              title={mm[3] || mm[1] || ""}
+              loading="lazy"
+            />
+          );
+        } else {
+          out.push(token);
+        }
+      }
+      // Bold: **text** or __text__
+      else if (
+        (token.startsWith("**") && token.endsWith("**")) ||
+        (token.startsWith("__") && token.endsWith("__"))
+      ) {
+        out.push(
+          <strong key={`${keyPrefix}s${start}`}>
+            {token.slice(2, -2)}
+          </strong>
         );
       }
-      return <React.Fragment key={idx}>{p}</React.Fragment>;
-    });
+      // Italic: *text* or _text_
+      else if (
+        (token.startsWith("*") && token.endsWith("*")) ||
+        (token.startsWith("_") && token.endsWith("_"))
+      ) {
+        out.push(
+          <em key={`${keyPrefix}e${start}`}>
+            {token.slice(1, -1)}
+          </em>
+        );
+      }
+      // Strike: ~~text~~
+      else if (token.startsWith("~~") && token.endsWith("~~")) {
+        out.push(
+          <del key={`${keyPrefix}d${start}`}>
+            {token.slice(2, -2)}
+          </del>
+        );
+      } else {
+        out.push(token);
+      }
+
+      last = start + token.length;
+    }
+
+    if (last < text.length) out.push(text.slice(last));
+    return out;
   };
+
+  return parts.flatMap((p, idx) => {
+    // Inline code: `code`
+    if (p.startsWith("`") && p.endsWith("`")) {
+      return (
+        <code key={`c${idx}`} className="mdInlineCode">
+          {p.slice(1, -1)}
+        </code>
+      );
+    }
+
+    // Everything else: parse bold/italic/links/etc.
+    return parseMarks(p, `t${idx}_`);
+  });
+};
 
   // If a line contains ONLY markdown images (one or many), render a gallery row
   function parseImageOnlyLine(line) {
