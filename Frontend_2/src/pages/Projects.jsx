@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import {API_BASE} from "../env"
 import { SiGithub } from "react-icons/si";
 import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 function joinUrl(base, path) {
   const b = (base || "").replace(/\/$/, "");
@@ -34,7 +35,7 @@ function normalizeLinks(links) {
 
 export default function Projects() {
   const { token } = useAuth();
-
+  const navigate = useNavigate();
  
   const PROJECTS_URL = joinUrl(API_BASE, "/api/core-project/");
   const TAGS_URL = joinUrl(API_BASE, "/api/core-projecttag/");
@@ -189,7 +190,15 @@ export default function Projects() {
           {filteredProjects.map((p) => {
             const extraLinks = normalizeLinks(p.links);
             const tagList = (p.tags || []).filter(Boolean);
+            const goToDetails = () => {
+              if (!p?.id) return;
+              navigate(`/projects/${p.id}`);
+            };
 
+            const stop = (e) => {
+              // let inner links/buttons work without triggering the card click
+              e.stopPropagation();
+            };
             return (
               <div key={p.id || p.slug || p.title} className="aboutCard">
                 <div className="rowBetween" style={{ marginBottom: 10 }}>

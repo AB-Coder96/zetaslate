@@ -89,7 +89,7 @@ export default function ProjectDetail() {
       <div className="rowBetween" style={{ gap: 12, alignItems: "center" }}>
         <div>
           <h1 style={{ marginBottom: 6 }}>{project?.title}</h1>
-          <div className="muted">{project?.summary}</div>
+          {/*<div className="muted">{project?.summary}</div>*/}
         </div>
         <Link to="/projects" className="pillBtn">← Back</Link>
       </div>
