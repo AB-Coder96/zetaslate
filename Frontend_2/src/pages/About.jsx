@@ -1,7 +1,9 @@
 import React from "react";
+import { SiGithub, SiLinkedin } from "react-icons/si";
+import { MdEmail } from "react-icons/md";
 
 const GITHUB_URL = "https://github.com/AB-Coder96";
-const LINKEDIN_URL = "https://www.linkedin.com/in/araz-karimi-0b2600290/"; // <-- replace with your LinkedIn
+const LINKEDIN_URL = "https://www.linkedin.com/in/araz-karimi-0b2600290/";
 const EMAIL = "arazbagherzadeh@gmail.com";
 
 export default function About() {
@@ -10,46 +12,66 @@ export default function About() {
       <h1>About</h1>
 
       <p className="aboutLead">
-        <strong>ZetaSlate</strong> is my personal platform and portfolio hub—built to present my work
-        in a clean, consistent way while giving me room to iterate and grow what I ship over time.
-        The projects themselves are listed in detail in the <strong>Projects</strong> tab.
+        <strong>ZetaSlate</strong> is my personal platform and portfolio hub—built
+        to showcase my work in a clean, consistent way while giving me room to
+        iterate and grow what I ship over time. Full project details are in the{" "}
+        <strong>Projects</strong> tab.
       </p>
 
       <p className="aboutLead">
-        I’m a <strong>software engineer with 4+ years</strong> of experience building production
-        software across backend systems, APIs, automation, and modern web applications. I enjoy
-        owning problems end-to-end—turning requirements into reliable, maintainable systems.
+        I’m a <strong>software engineer with 5+ years</strong> of experience
+        building production systems across backend services, APIs, automation,
+        and modern web applications. I enjoy owning problems end-to-end—turning
+        requirements into reliable, maintainable software.
       </p>
 
       <p className="aboutLead">
-        My core strengths include <strong>Python</strong>, <strong>C++</strong>, <strong>SQL</strong>,
-        and cloud-based development, with a focus on performance, clarity, and shipping practical
-        solutions.
+        My core strengths include <strong>Python</strong>, <strong>C++</strong>,{" "}
+        <strong>networking</strong>, and <strong>cloud development</strong>, with
+        a focus on performance, clarity, low-latency systems, and shipping
+        practical solutions.
+      </p>
+
+      <p className="aboutLead">
+        Interested in collaborating or need professional help? Reach out via
+        LinkedIn, GitHub, or email—I’m happy to connect.
       </p>
 
       <div className="divider" />
 
       <div className="authButtons" aria-label="Social links">
         <a
-          className="btn btnGhost"
+          className="pillBtn icon"
           href={LINKEDIN_URL}
           target="_blank"
           rel="noopener noreferrer"
+          aria-label="LinkedIn"
+          title="LinkedIn"
         >
-          LinkedIn
+          <SiLinkedin size={18} />
+          <span>LinkedIn</span>
         </a>
 
         <a
-          className="btn btnGhost"
+          className="pillBtn icon"
           href={GITHUB_URL}
           target="_blank"
           rel="noopener noreferrer"
+          aria-label="GitHub"
+          title="GitHub"
         >
-          GitHub
+          <SiGithub size={18} />
+          <span>GitHub</span>
         </a>
 
-        <a className="btn btnGhost" href={`mailto:${EMAIL}`}>
-          Email me
+        <a
+          className="pillBtn icon"
+          href={`mailto:${EMAIL}`}
+          aria-label="Email"
+          title="Email"
+        >
+          <MdEmail size={18} />
+          <span>Email</span>
         </a>
       </div>
     </section>
