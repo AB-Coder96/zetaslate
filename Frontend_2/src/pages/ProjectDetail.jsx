@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { API_BASE } from "../env";
+import { SiGithub } from "react-icons/si";
 import Markdown from "../Components/Markdown";
 
 function joinUrl(base, path) {
@@ -122,6 +123,20 @@ export default function ProjectDetail() {
             No README uploaded for this project yet. Upload a <span className="codeBadge">.md</span> in Django admin.
           </div>
         )}
+        {p.github_url ? (
+                          <a
+                            className="pillBtn icon"
+                            href={p.github_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="GitHub"
+                            title="GitHub"
+                            onClick={stop}
+                          >
+                            <SiGithub size={18} />
+                            More on Github
+                          </a>
+                        ) : null}
       </div>
     </section>
   );

@@ -215,14 +215,14 @@ export default function Projects() {
                 <div className="rowBetween" style={{ marginBottom: 10 }}>
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 700 }}>{p.title}</div>
-                    {p.summary ? (
+                    {/*{p.summary ? (
                       <div className="muted" style={{ marginTop: 6 }}>
                         {p.summary}
                       </div>
-                    ) : null}
+                    ) : null}*/}
                   </div>
 
-                  {p.status ? <span className="codeBadge">{p.status}</span> : null}
+                  {/*{p.status ? <span className="codeBadge">{p.status}</span> : null}*/}
                 </div>
 
                 {p.thumbnail ? (
