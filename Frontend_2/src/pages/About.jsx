@@ -1,5 +1,9 @@
 import React from "react";
 
+const GITHUB_URL = "https://github.com/AB-Coder96";
+const LINKEDIN_URL = "https://www.linkedin.com/in/araz-karimi-0b2600290/"; // <-- replace with your LinkedIn
+const EMAIL = "arazbagherzadeh@gmail.com";
+
 export default function About() {
   return (
     <section className="pageCard">
@@ -13,22 +17,41 @@ export default function About() {
 
       <p className="aboutLead">
         I’m a <strong>software engineer with 4+ years</strong> of experience building production
-        software across backend systems, APIs, automation, and modern web applications. I work
-        comfortably across the stack, but I’m especially drawn to roles where I can take ownership
-        of a problem end-to-end—turning ambiguous requirements into reliable, maintainable systems.
+        software across backend systems, APIs, automation, and modern web applications. I enjoy
+        owning problems end-to-end—turning requirements into reliable, maintainable systems.
       </p>
 
       <p className="aboutLead">
         My core strengths include <strong>Python</strong>, <strong>C++</strong>, <strong>SQL</strong>,
         and cloud-based development, with a focus on performance, clarity, and shipping practical
-        solutions. I enjoy building tools that make workflows faster, products more dependable, and
-        systems easier to operate.
+        solutions.
       </p>
 
-      <p className="aboutFooter">
-        Want to connect or collaborate? Head to the Contact page—I’m always open to talking about
-        engineering work, new opportunities, and interesting problems.
-      </p>
+      <div className="divider" />
+
+      <div className="authButtons" aria-label="Social links">
+        <a
+          className="btn btnGhost"
+          href={LINKEDIN_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          LinkedIn
+        </a>
+
+        <a
+          className="btn btnGhost"
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          GitHub
+        </a>
+
+        <a className="btn btnGhost" href={`mailto:${EMAIL}`}>
+          Email me
+        </a>
+      </div>
     </section>
   );
 }
