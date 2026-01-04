@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import {API_BASE} from "../env"
+import { Github } from "lucide-react";
 
 function joinUrl(base, path) {
   const b = (base || "").replace(/\/$/, "");
@@ -238,8 +239,16 @@ export default function Projects() {
                   ) : null}
 
                   {p.github_url ? (
-                    <a className="pillBtn" href={p.github_url} target="_blank" rel="noreferrer">
-                      GitHub
+                    <a
+                      className="pillBtn"
+                      href={p.github_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="GitHub"
+                      title="GitHub"
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                    >
+                      <Github size={18} />
                     </a>
                   ) : null}
 
