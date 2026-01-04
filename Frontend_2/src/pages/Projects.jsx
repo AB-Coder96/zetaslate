@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import {API_BASE} from "../env"
-import { Github } from "lucide-react";
+import { SiGithub } from "react-icons/si";
+import { Link } from "react-router-dom";
 
 function joinUrl(base, path) {
   const b = (base || "").replace(/\/$/, "");
@@ -230,28 +231,26 @@ export default function Projects() {
                     ))}
                   </div>
                 ) : null}
-
+                <Link className="pillBtn" to={`/projects/${p.id}`}>Details</Link>
                 <div className="pillRow">
                   {p.live_url ? (
                     <a className="pillBtn" href={p.live_url} target="_blank" rel="noreferrer">
                       Live
                     </a>
                   ) : null}
-
+                  
                   {p.github_url ? (
-                    <a
-                      className="pillBtn"
-                      href={p.github_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="GitHub"
-                      title="GitHub"
-                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                    >
-                      <Github size={18} />
-                    </a>
-                  ) : null}
-
+                  <a
+                    className="pillBtn icon"
+                    href={p.github_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="GitHub"
+                    title="GitHub"
+                  >
+                    <SiGithub size={18} />
+                  </a>
+                ) : null}
                   {p.case_study_url ? (
                     <a className="pillBtn" href={p.case_study_url} target="_blank" rel="noreferrer">
                       Case Study
