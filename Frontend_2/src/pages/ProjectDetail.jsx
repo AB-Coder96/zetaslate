@@ -97,6 +97,20 @@ export default function ProjectDetail() {
       <div style={{ height: 14 }} />
 
       <div className="aboutCard">
+                        {p.thumbnail ? (
+                          <div style={{ marginBottom: 10 }}>
+                            <img
+                              src={p.thumbnail?.startsWith("http") ? p.thumbnail : joinUrl(API_BASE, p.thumbnail)}
+                              alt={`${p.title} thumbnail`}
+                              style={{
+                                width: "100%",
+                                borderRadius: 12,
+                                border: "1px solid rgba(255,255,255,0.08)",
+                              }}
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : null}
         {markdown?.trim() ? (
           <Markdown text={markdown} />
         ) : (
