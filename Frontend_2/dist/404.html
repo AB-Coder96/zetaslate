@@ -3,16 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <script>
-      // Redirect unknown routes to index.html while preserving the path
-      var path = location.pathname;
-      var search = location.search;
-      var hash = location.hash;
-      location.replace(
-        location.origin +
-          (location.pathname.split("/").slice(0, -1).join("/") || "") +
-          "/?redirect=" +
-          encodeURIComponent(path + search + hash)
-      );
+      // GitHub Pages SPA redirect (BrowserRouter compatible)
+      // Always redirect to the site root (or repo root), NOT to the parent directory.
+      (function () {
+        var l = window.location;
+
+        // If you're deployed as a *project* site: /<repo>/...
+        // If you're deployed as a *user/org* site: /...
+        // We auto-detect by checking whether the first segment looks like a route.
+        var knownRoutes = new Set([
+          "about",
+          "projects",
+          "profile",
+          "profile1",
+          "profile2",
+          "profile3",
+          "profile4"
+        ]);
+
+        var parts = l.pathname.split("/").filter(Boolean); // e.g. ["zetaslate","projects","123"] or ["projects","123"]
+        var first = parts[0] || "";
+        var base = first && !knownRoutes.has(first) ? "/" + first : ""; // "/zetaslate" or ""
+
+        var fullPath = l.pathname + l.search + l.hash;
+
+        // Redirect to root index.html with the original path encoded
+        l.replace(l.origin + base + "/?redirect=" + encodeURIComponent(fullPath));
+      })();
     </script>
   </head>
   <body></body>

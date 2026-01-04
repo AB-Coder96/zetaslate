@@ -27,12 +27,12 @@ export default function LeftNav({ open, onToggle }) {
         >
           {open ? "About" : "ℹ️"}
         </NavLink>
-        <NavLink
+        {/*<NavLink
           to="/profile"
           className={({ isActive }) => (isActive ? "navLink active" : "navLink")}
         >
           {open ? "Profile" : "👤"}
-        </NavLink>
+        </NavLink>*/}
       </nav>
     </aside>
   );
